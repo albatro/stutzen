@@ -1,0 +1,19 @@
+{
+  "name": "stutzen",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:ym": "node --env-file=.env scripts/test-ym.mjs",
+    "count": "node --env-file=.env scripts/count-offers.mjs",
+    "sync": "node --env-file=.env src/sync-cli.mjs",
+    "import:supplier": "node --env-file=.env scripts/import-supplier.mjs",
+    "import:sales": "node --env-file=.env scripts/import-sales.mjs",
+    "start": "node --env-file=.env src/server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "sax": "^1.6.0"
+  }
+}

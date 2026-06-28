@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — наценка</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; color: #222; max-width: 1100px; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    .nav { font-size: 13px; margin-bottom: 16px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+    h2 { font-size: 14px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 24px; }
+    .form-row { display: flex; gap: 12px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+    label { font-size: 13px; }
+    input[type=number], input[type=text], select { padding: 6px 8px; font-size: 14px; }
+    button { background: #ffcc00; border: none; padding: 6px 14px; cursor: pointer; border-radius: 4px; font-size: 14px; }
+    button.secondary { background: #eee; }
+    button.danger { background: #e57373; color: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid #eee; text-align: left; }
+    th { background: #f5f5f5; }
+    .hint { color: #666; font-size: 12px; }
+    .ok { color: #080; }
+    .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Настройка наценки</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/supplier.html">Поставщик</a>
+    <a href="/markup.html" class="active">Наценка</a>
+    <a href="/price-sync.html">Сверка и отправка цен</a>
+    <a href="/sales.html">Продажи</a>
+    <a href="/cancellations.html">Отмены →</a>
+  </div>
+
+  <h2>Глобальное правило</h2>
+  <div class="hint">Применяется ко всем товарам, если для категории не задано своё правило.</div>
+  <form id="globalForm" class="form-row">
+    <label>Целевая маржа, %: <input type="number" name="margin_percent" step="0.1" required></label>
+    <label>Мин. маржа, ₽: <input type="number" name="min_margin_amount" step="1" placeholder="опционально"></label>
+    <button type="submit">Сохранить</button>
+    <span id="globalStatus" class="hint"></span>
+  </form>
+
+  <h2>Переопределения по категориям ЯМ</h2>
+  <div class="hint">Добавь категорию и свою маржу. Категория выбирается из тех, что есть в твоём кабинете ЯМ.</div>
+  <form id="categoryForm" class="form-row">
+    <select name="ym_category_id" required style="min-width:300px"></select>
+    <label>Маржа, %: <input type="number" name="margin_percent" step="0.1" required></label>
+    <label>Мин. маржа, ₽: <input type="number" name="min_margin_amount" step="1" placeholder="опционально"></label>
+    <button type="submit">Добавить / обновить</button>
+    <span id="categoryStatus" class="hint"></span>
+  </form>
+
+  <table id="rulesTable">
+    <thead>
+      <tr><th>Тип</th><th>Категория</th><th>Маржа, %</th><th>Мин. маржа, ₽</th><th>Активно</th><th></th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script src="/markup.js"></script>
+</body>
+</html>

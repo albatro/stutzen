@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — отчёт по отменам</title>
+  <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_simple.min.css" rel="stylesheet">
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    .nav { font-size: 13px; margin-bottom: 8px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+    .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .bar input, .bar select, .bar button { padding: 6px 10px; font-size: 14px; }
+    button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; padding: 6px 10px; }
+    .total-card { background: #fff0f0; border: 1px solid #f5a3a3; border-radius: 6px; padding: 12px 16px; margin: 8px 0 14px; }
+    .total-card h2 { margin: 0 0 8px; font-size: 14px; }
+    .total-card .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 18px; font-size: 13px; }
+    .total-card .grid b { font-size: 16px; display: block; margin-top: 2px; }
+    .total-card .small { font-size: 11px; color: #777; }
+    .breakdown { display: flex; gap: 30px; margin-top: 14px; flex-wrap: wrap; }
+    .breakdown table { border-collapse: collapse; font-size: 12px; }
+    .breakdown th, .breakdown td { padding: 4px 10px; border-bottom: 1px solid #eee; text-align: right; }
+    .breakdown th { background: #f5f5f5; }
+    .breakdown th:first-child, .breakdown td:first-child { text-align: left; }
+    #table { height: calc(100vh - 380px); }
+    .thumb { width: 32px; height: 32px; object-fit: contain; }
+    .hot { color: #c00; font-weight: bold; }
+
+    .tabulator .tabulator-header,
+    .tabulator .tabulator-header-contents,
+    .tabulator .tabulator-headers { height: auto !important; }
+    .tabulator .tabulator-header .tabulator-col,
+    .tabulator .tabulator-header .tabulator-col .tabulator-col-content,
+    .tabulator .tabulator-header .tabulator-col-resize-handle { height: auto !important; min-height: 56px; }
+    .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder,
+    .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+      white-space: normal !important; overflow: visible !important; line-height: 1.2;
+    }
+    .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px; }
+  </style>
+</head>
+<body>
+  <h1>Отчёт по отменам клиентов</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/supplier.html">Поставщик</a>
+    <a href="/markup.html">Наценка</a>
+    <a href="/price-sync.html">Сверка и отправка цен</a>
+    <a href="/sales.html">Продажи</a>
+    <a href="/cancellations.html" class="active">Отмены</a>
+  </div>
+
+  <div class="total-card" id="totalCard">Считаю…</div>
+
+  <div class="bar">
+    <input id="search" type="text" placeholder="поиск по SKU / названию">
+    <label>с <input type="date" id="dateFrom"></label>
+    <label>по <input type="date" id="dateTo"></label>
+    <button id="apply">Применить</button>
+    <button id="exportCsv">Экспорт CSV → Excel</button>
+  </div>
+
+  <div id="table"></div>
+
+  <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+  <script src="/cancellations.js"></script>
+</body>
+</html>
