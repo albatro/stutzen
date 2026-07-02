@@ -257,16 +257,29 @@ app.post('/api/markup-rules', (req, res) => {
   if (scope === 'category' && !ym_category_id) return res.status(400).json({ error: 'ym_category_id required' });
   if (typeof margin_percent !== 'number') return res.status(400).json({ error: 'margin_percent must be number' });
   try {
-    db.prepare(`
-      INSERT INTO markup_rules (scope, ym_category_id, margin_percent, min_margin_amount, active, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(scope, ym_category_id) DO UPDATE SET
-        margin_percent = excluded.margin_percent,
-        min_margin_amount = excluded.min_margin_amount,
-        active = excluded.active, updated_at = excluded.updated_at
-    `).run(scope, scope === 'category' ? Number(ym_category_id) : null,
-           Number(margin_percent), min_margin_amount == null ? null : Number(min_margin_amount),
-           active ? 1 : 0, new Date().toISOString());
+    const now = new Date().toISOString();
+    const marginN = Number(margin_percent);
+    const minMarginN = min_margin_amount == null ? null : Number(min_margin_amount);
+    const activeN = active ? 1 : 0;
+    if (scope === 'global') {
+      // Глобальная строка гарантированно есть (создаётся на старте). SQLite считает
+      // NULL-ы в UNIQUE различными, поэтому ON CONFLICT здесь не срабатывает —
+      // делаем явный UPDATE, чтобы не плодить дубликаты.
+      db.prepare(`
+        UPDATE markup_rules
+           SET margin_percent = ?, min_margin_amount = ?, active = ?, updated_at = ?
+         WHERE scope = 'global'
+      `).run(marginN, minMarginN, activeN, now);
+    } else {
+      db.prepare(`
+        INSERT INTO markup_rules (scope, ym_category_id, margin_percent, min_margin_amount, active, updated_at)
+        VALUES ('category', ?, ?, ?, ?, ?)
+        ON CONFLICT(scope, ym_category_id) DO UPDATE SET
+          margin_percent = excluded.margin_percent,
+          min_margin_amount = excluded.min_margin_amount,
+          active = excluded.active, updated_at = excluded.updated_at
+      `).run(Number(ym_category_id), marginN, minMarginN, activeN, now);
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

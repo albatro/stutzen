@@ -247,6 +247,20 @@ export function updateSalesImport(id, fields) {
   db.prepare(`UPDATE sales_imports SET ${sets} WHERE id = ?`).run(...keys.map(k => fields[k]), id);
 }
 
+// Дедуп глобального правила: SQLite считает NULL в UNIQUE различными,
+// поэтому до фикса в POST /api/markup-rules могли накопиться дубли.
+// Оставляем самую свежую строку (по updated_at, затем id), остальные — удаляем.
+db.exec(`
+  DELETE FROM markup_rules
+  WHERE scope = 'global'
+    AND id NOT IN (
+      SELECT id FROM markup_rules
+      WHERE scope = 'global'
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    )
+`);
+
 // Гарантируем наличие глобального правила.
 const has = db.prepare(`SELECT id FROM markup_rules WHERE scope='global'`).get();
 if (!has) {
