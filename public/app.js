@@ -40,6 +40,8 @@ const table = new Tabulator('#table', {
     { title: 'Категория', field: 'category_name', width: 180 },
     { title: 'Цена, ₽', field: 'price', width: 110, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Закупочная цена, ₽', field: 'purchase_price', width: 130, hozAlign: 'right',
+      formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Остаток', field: 'stock_total', width: 90, hozAlign: 'right' },
     { title: 'Комиссия за продажу, ₽', field: 'fee_amount', width: 130, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },

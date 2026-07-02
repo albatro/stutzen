@@ -39,6 +39,7 @@ app.get('/api/offers', (req, res) => {
     delivery_amount: 'c.delivery_amount',
     middle_mile_amount: 'c.middle_mile_amount',
     payout: '(p.value - c.total_amount)',
+    purchase_price: 'sp.purchase_price',
     updated_at: 'o.updated_at',
   };
   const sortExpr = sortMap[sort] ?? sortMap.offer_id;
@@ -57,6 +58,7 @@ app.get('/api/offers', (req, res) => {
     FROM offers o
     LEFT JOIN prices p ON p.offer_id = o.offer_id
     LEFT JOIN commissions c ON c.offer_id = o.offer_id
+    LEFT JOIN supplier_offers sp ON sp.offer_id = o.offer_id
     LEFT JOIN (
       SELECT offer_id, SUM(CASE WHEN type = 'AVAILABLE' THEN count ELSE 0 END) AS stock_total
       FROM stocks GROUP BY offer_id
@@ -69,6 +71,7 @@ app.get('/api/offers', (req, res) => {
     SELECT
       o.offer_id, o.name, o.market_sku, o.category_id, o.category_name, o.image_url,
       p.value AS price, p.currency,
+      sp.purchase_price,
       COALESCE(s.stock_total, 0) AS stock_total,
       c.fee_amount, c.fee_percent, c.agency_amount, c.payment_amount,
       c.delivery_amount, c.middle_mile_amount,
