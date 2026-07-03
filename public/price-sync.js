@@ -178,6 +178,69 @@ $('#sendSel').addEventListener('click', async () => {
   sendOffers(sel);
 });
 
+// ---- YML-фид ----
+const feedUrl = new URL('/api/ym/price-feed.xml', location.href).href;
+$('#feedUrl').value = feedUrl;
+
+function relTime(iso) {
+  if (!iso) return 'ещё не собирался';
+  const diffSec = Math.round((Date.now() - Date.parse(iso)) / 1000);
+  if (diffSec < 60) return `${diffSec} с назад`;
+  const m = Math.round(diffSec / 60);
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} ч назад`;
+  return `${Math.round(h / 24)} дн назад`;
+}
+
+let feedPollTimer;
+async function loadFeedStats() {
+  try {
+    const r = await fetch('/api/ym/price-feed/stats');
+    const j = await r.json();
+    const parts = [];
+    if (j.generating) {
+      parts.push('<b>идёт сборка…</b>');
+    } else {
+      parts.push(`в фиде: <b>${j.count}</b> офферов`);
+      const skipped = (j.skipped_below_purchase ?? 0) + (j.skipped_no_rule ?? 0);
+      if (skipped) parts.push(`пропущено ${skipped}`);
+      parts.push(`обновлён ${relTime(j.generated_at)}`);
+      if (j.last_duration_ms != null) parts.push(`за ${(j.last_duration_ms / 1000).toFixed(1)} с`);
+      if (j.last_error) parts.push(`<span style="color:#c00">ошибка: ${j.last_error}</span>`);
+    }
+    $('#feedStats').innerHTML = parts.join(' · ');
+    $('#feedRegen').disabled = j.generating;
+
+    clearTimeout(feedPollTimer);
+    if (j.generating) feedPollTimer = setTimeout(loadFeedStats, 2000);
+  } catch (e) { $('#feedStats').textContent = 'ошибка: ' + e.message; }
+}
+
+$('#feedCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(feedUrl); $('#feedCopy').textContent = '✓ скопировано'; setTimeout(() => $('#feedCopy').textContent = '📋 URL', 1500); }
+  catch { $('#feedUrl').select(); document.execCommand('copy'); }
+});
+$('#feedOpen').addEventListener('click', () => window.open(feedUrl, '_blank'));
+$('#feedDownload').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = feedUrl;
+  a.download = 'stutzen-price-feed.xml';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+$('#feedRegen').addEventListener('click', async () => {
+  $('#feedRegen').disabled = true;
+  try {
+    const r = await fetch('/api/ym/price-feed/regenerate', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) alert(j.error ?? 'Ошибка');
+  } catch (e) { alert(e.message); }
+  loadFeedStats();
+});
+loadFeedStats();
+// Раз в минуту освежаем «обновлён N мин назад» — даже когда генерации нет.
+setInterval(() => { if (!$('#feedRegen').disabled) loadFeedStats(); }, 60000);
+
 $('#sendAll').addEventListener('click', async () => {
   // подгружаем весь список через API, не только текущую страницу
   const p = new URLSearchParams();

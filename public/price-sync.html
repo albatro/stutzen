@@ -37,6 +37,14 @@
     }
     .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px; }
 
+    .feed-box { background: #eef6ff; border: 1px solid #cfe3ff; border-radius: 6px; padding: 10px 12px; margin: 8px 0; }
+    .feed-title { font-weight: bold; font-size: 13px; margin-bottom: 6px; }
+    .feed-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .feed-row input { flex: 1; min-width: 260px; font-family: monospace; font-size: 12px; padding: 4px 8px; }
+    .feed-row button { padding: 4px 10px; font-size: 12px; background: #fff; border: 1px solid #bbb; }
+    .feed-row button:hover { background: #f5f5f5; }
+    .feed-hint { font-size: 12px; color: #666; margin-top: 6px; }
+
     .details-link { color: #06c; cursor: pointer; text-decoration: underline; font-size: 12px; }
     .bd-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,.35);
@@ -74,6 +82,21 @@
   </div>
 
   <div class="summary" id="summary">Считаю…</div>
+
+  <div class="feed-box">
+    <div class="feed-title">YML-фид с рассчитанными ценами</div>
+    <div class="feed-row">
+      <input id="feedUrl" type="text" readonly>
+      <button id="feedCopy" title="Копировать URL">📋 URL</button>
+      <button id="feedOpen" title="Открыть в новой вкладке">🔗 Открыть</button>
+      <button id="feedDownload" title="Скачать XML">⬇ Скачать</button>
+      <button id="feedRegen" title="Пересобрать фид сейчас">↻ Пересобрать</button>
+      <span class="stats" id="feedStats">…</span>
+    </div>
+    <div class="feed-hint">
+      Вставьте этот URL в ЯМ → «Настройки магазина → Прайс-лист по ссылке». Фид пересобирается автоматически раз в час, кнопка «Пересобрать» — внеочередной пересбор.
+    </div>
+  </div>
 
   <div class="bar">
     <input id="search" type="text" placeholder="поиск по SKU / названию">

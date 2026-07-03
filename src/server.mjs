@@ -6,6 +6,7 @@ import { runSupplierImport } from './supplier/import.mjs';
 import { runSalesImport } from './sales/import.mjs';
 import { ym } from './ym/client.mjs';
 import { calcTargetPrice } from './pricing/calculator.mjs';
+import { getFeedState, regenerateFeed, initFeedCache, scheduleFeedRegeneration } from './feed/cache.mjs';
 
 const app = express();
 app.use(express.json());
@@ -463,6 +464,39 @@ app.get('/api/price-updates', (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 2000);
   const rows = db.prepare(`SELECT * FROM price_updates ORDER BY id DESC LIMIT ?`).all(limit);
   res.json({ rows });
+});
+
+// ---- YML-фид с рассчитанными ценами (для «Прайс-лист по ссылке» в ЯМ) ----
+// Фид собирается в фоне (crontab + вручную), эндпоинт отдаёт уже готовый XML.
+app.get('/api/ym/price-feed.xml', (req, res) => {
+  const s = getFeedState();
+  if (!s.xml) {
+    return res.status(503).set('Retry-After', '30').type('text/plain')
+      .send('Фид ещё готовится, попробуйте через минуту.');
+  }
+  res.set('Content-Type', 'application/xml; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.set('Last-Modified', new Date(s.generated_at).toUTCString());
+  res.send(s.xml);
+});
+
+app.get('/api/ym/price-feed/stats', (req, res) => {
+  const s = getFeedState();
+  res.json({
+    count: s.count,
+    skipped_below_purchase: s.skipped_below_purchase,
+    skipped_no_rule: s.skipped_no_rule,
+    generated_at: s.generated_at,
+    generating: s.generating,
+    last_error: s.last_error,
+    last_duration_ms: s.last_duration_ms,
+  });
+});
+
+app.post('/api/ym/price-feed/regenerate', async (req, res) => {
+  if (getFeedState().generating) return res.status(409).json({ error: 'генерация уже идёт' });
+  regenerateFeed().catch(() => {});
+  res.json({ ok: true, message: 'генерация запущена' });
 });
 
 // ---- Продажи ----
@@ -975,6 +1009,10 @@ if (SYNC_CRON) {
   });
   console.log(`Cron: ${SYNC_CRON}`);
 }
+
+// YML-фид: восстанавливаем из data/ + расписание раз в час (переопределяется FEED_CRON).
+initFeedCache().catch(e => console.error('feed init failed:', e));
+scheduleFeedRegeneration(process.env.FEED_CRON ?? '0 * * * *');
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => console.log(`http://localhost:${PORT}`));
