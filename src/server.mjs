@@ -330,6 +330,10 @@ function rowsWithProposals({ where = '', whereParams = [] } = {}) {
     const oldPrice = r.ym_price;
     const delta = oldPrice == null ? null : newPrice - oldPrice;
     const deltaPct = (oldPrice != null && oldPrice > 0) ? (delta / oldPrice * 100) : null;
+    const requiredByPct = Math.round(r.purchase_price * (1 + (rule.margin_percent ?? 0) / 100) * 100) / 100;
+    const requiredByAbs = rule.min_margin_amount != null
+      ? Math.round((r.purchase_price + rule.min_margin_amount) * 100) / 100
+      : null;
     result.push({
       offer_id: r.offer_id, name: r.name, category_name: r.category_name, image_url: r.image_url,
       purchase_price: r.purchase_price, supplier_price: r.supplier_price, supplier_min: r.supplier_min,
@@ -338,6 +342,15 @@ function rowsWithProposals({ where = '', whereParams = [] } = {}) {
       expected_margin: calc.expected_margin, expected_margin_percent: calc.expected_margin_percent,
       rule_scope: rule.scope, rule_margin_percent: rule.margin_percent,
       below_purchase: newPrice < r.purchase_price ? 1 : 0,
+      breakdown: {
+        ...calc.breakdown,
+        rule_scope: rule.scope,
+        rule_margin_percent: rule.margin_percent,
+        rule_min_margin_amount: rule.min_margin_amount,
+        required_payout_by_pct: requiredByPct,
+        required_payout_by_abs: requiredByAbs,
+        required_payout: Math.max(requiredByPct, requiredByAbs ?? 0),
+      },
     });
   }
   return result;

@@ -44,10 +44,13 @@ export function calcTargetPrice({ purchase_price, fee_percent, middle_mile_amoun
 
 function packResult(rawPrice, purchase, feePct, middleMile) {
   const price = Math.round(rawPrice); // округление до рубля (по требованию)
-  const delivery = Math.min(price * DELIVERY_PCT / 100, DELIVERY_CAP);
+  const deliveryUncapped = price * DELIVERY_PCT / 100;
+  const deliveryCapped = deliveryUncapped > DELIVERY_CAP;
+  const delivery = Math.min(deliveryUncapped, DELIVERY_CAP);
   const fee = price * feePct / 100;
   const payment = price * PAYMENT_PCT / 100;
-  const totalCosts = fee + payment + delivery + (middleMile ?? 0) + AGENCY_FIXED;
+  const mm = middleMile ?? 0;
+  const totalCosts = fee + payment + delivery + mm + AGENCY_FIXED;
   const payout = price - totalCosts;
   const margin = payout - purchase;
   const marginPct = purchase > 0 ? margin / purchase * 100 : null;
@@ -57,6 +60,23 @@ function packResult(rawPrice, purchase, feePct, middleMile) {
     expected_costs: round2(totalCosts),
     expected_margin: round2(margin),
     expected_margin_percent: marginPct == null ? null : round1(marginPct),
+    breakdown: {
+      price,
+      purchase_price: round2(purchase),
+      fee_percent: feePct,
+      fee_amount: round2(fee),
+      payment_percent: PAYMENT_PCT,
+      payment_amount: round2(payment),
+      delivery_percent: DELIVERY_PCT,
+      delivery_amount: round2(delivery),
+      delivery_capped: deliveryCapped,
+      agency_amount: AGENCY_FIXED,
+      middle_mile_amount: round2(mm),
+      total_costs: round2(totalCosts),
+      payout: round2(payout),
+      margin: round2(margin),
+      margin_percent: marginPct == null ? null : round1(marginPct),
+    },
   };
 }
 

@@ -49,6 +49,9 @@ const table = new Tabulator('#table', {
     { title: 'Цена в ЯМ сейчас, ₽', field: 'ym_price', width: 120, hozAlign: 'right', formatter: (c) => fmtMoney(c.getValue()) },
     { title: 'Новая цена, ₽', field: 'new_price', width: 110, hozAlign: 'right',
       formatter: (c) => `<b>${fmtMoney(c.getValue())}</b>` },
+    { title: 'Расчёт', field: 'breakdown', width: 80, hozAlign: 'center', headerSort: false,
+      formatter: (c) => c.getValue() ? '<span class="details-link">детали</span>' : '',
+      cellClick: (_e, cell) => { if (cell.getValue()) showBreakdown(cell.getData()); } },
     { title: 'Δ, ₽', field: 'delta', width: 90, hozAlign: 'right',
       formatter: (c) => {
         const v = c.getValue();
@@ -77,6 +80,54 @@ function renderSummary(s, filteredTotal) {
     <span>Ниже закупочной (заблокировано): <b>${s.below_purchase}</b></span>
     <span>Под фильтром: <b>${filteredTotal}</b></span>
   `;
+}
+
+function showBreakdown(row) {
+  const b = row.breakdown;
+  if (!b) return;
+  const capNote = b.delivery_capped ? ' <span style="color:#888">(потолок 1000 ₽)</span>' : '';
+  const ruleLabel = b.rule_scope === 'global' ? 'глобальное' : 'по категории';
+  const minAbs = b.rule_min_margin_amount != null
+    ? ` или ≥ ${fmtMoney(b.rule_min_margin_amount)} ₽`
+    : '';
+  const html = `
+    <div class="bd-head">
+      <div>
+        <div class="bd-title">Расчёт цены — ${row.offer_id}</div>
+        <div class="bd-sub">${row.name ?? ''}</div>
+      </div>
+      <button class="bd-close" aria-label="Закрыть">×</button>
+    </div>
+    <table class="bd-table">
+      <tr><td>Закупочная</td><td>${fmtMoney(b.purchase_price)} ₽</td></tr>
+      <tr><td>Правило наценки (${ruleLabel})</td><td>${b.rule_margin_percent}%${minAbs}</td></tr>
+      <tr><td>Требуемая выплата от ЯМ</td><td><b>${fmtMoney(b.required_payout)} ₽</b></td></tr>
+      <tr class="bd-sep"><td colspan="2">Комиссии ЯМ</td></tr>
+      <tr><td>Комиссия категории (${b.fee_percent}%)</td><td>−${fmtMoney(b.fee_amount)} ₽</td></tr>
+      <tr><td>Приём оплаты (${b.payment_percent}%)</td><td>−${fmtMoney(b.payment_amount)} ₽</td></tr>
+      <tr><td>Доставка (${b.delivery_percent}%)${capNote}</td><td>−${fmtMoney(b.delivery_amount)} ₽</td></tr>
+      <tr><td>Средняя миля</td><td>−${fmtMoney(b.middle_mile_amount)} ₽</td></tr>
+      <tr><td>Агентское вознаграждение</td><td>−${fmtMoney(b.agency_amount)} ₽</td></tr>
+      <tr><td><b>Итого комиссий</b></td><td><b>−${fmtMoney(b.total_costs)} ₽</b></td></tr>
+      <tr class="bd-sep"><td colspan="2">Итог</td></tr>
+      <tr><td>Цена продажи</td><td><b>${fmtMoney(b.price)} ₽</b></td></tr>
+      <tr><td>Выплата от ЯМ</td><td>${fmtMoney(b.payout)} ₽</td></tr>
+      <tr><td>Маржа</td><td>${fmtMoney(b.margin)} ₽ (${b.margin_percent}%)</td></tr>
+    </table>
+  `;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'bd-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'bd-modal';
+  modal.innerHTML = html;
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  modal.querySelector('.bd-close').addEventListener('click', close);
+  document.addEventListener('keydown', function onEsc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
+  });
 }
 
 let debounce;
