@@ -40,6 +40,8 @@ app.get('/api/offers', (req, res) => {
     middle_mile_amount: 'c.middle_mile_amount',
     payout: '(p.value - c.total_amount)',
     purchase_price: 'sp.purchase_price',
+    weight: 'o.weight',
+    supplier_weight: 'sp.weight',
     updated_at: 'o.updated_at',
   };
   const sortExpr = sortMap[sort] ?? sortMap.offer_id;
@@ -72,6 +74,8 @@ app.get('/api/offers', (req, res) => {
       o.offer_id, o.name, o.market_sku, o.category_id, o.category_name, o.image_url,
       p.value AS price, p.currency,
       sp.purchase_price,
+      o.length, o.width, o.height, o.weight,
+      sp.weight AS supplier_weight, sp.dimensions AS supplier_dimensions,
       COALESCE(s.stock_total, 0) AS stock_total,
       c.fee_amount, c.fee_percent, c.agency_amount, c.payment_amount,
       c.delivery_amount, c.middle_mile_amount,

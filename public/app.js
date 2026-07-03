@@ -42,6 +42,19 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Закупочная цена, ₽', field: 'purchase_price', width: 130, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Габариты ЯМ, см', field: 'ym_dimensions', width: 130, hozAlign: 'right', headerSort: false,
+      formatter: (cell) => {
+        const r = cell.getData();
+        const parts = [r.length, r.width, r.height];
+        if (parts.every(v => v == null)) return '';
+        return parts.map(v => v == null ? '?' : v).join('×');
+      } },
+    { title: 'Вес ЯМ, кг', field: 'weight', width: 100, hozAlign: 'right',
+      formatter: (cell) => cell.getValue() == null ? '' : Number(cell.getValue()).toLocaleString('ru-RU', { maximumFractionDigits: 3 }) },
+    { title: 'Габариты поставщика', field: 'supplier_dimensions', width: 150, hozAlign: 'right', headerSort: false,
+      formatter: (cell) => cell.getValue() ?? '' },
+    { title: 'Вес поставщика, кг', field: 'supplier_weight', width: 130, hozAlign: 'right',
+      formatter: (cell) => cell.getValue() == null ? '' : Number(cell.getValue()).toLocaleString('ru-RU', { maximumFractionDigits: 3 }) },
     { title: 'Остаток', field: 'stock_total', width: 90, hozAlign: 'right' },
     { title: 'Комиссия за продажу, ₽', field: 'fee_amount', width: 130, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
