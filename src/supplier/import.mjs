@@ -1,7 +1,7 @@
 // Импортируем YML-фид поставщика → SQLite. Парсим стримом sax (122+ МБ файла).
 import sax from 'sax';
 import { createWriteStream } from 'node:fs';
-import { Readable } from 'node:stream';
+import { Readable, PassThrough } from 'node:stream';
 import { db, inTx, upsertSupplierOffer, upsertSupplierCategory, startSupplierImport, updateSupplierImport } from '../db.mjs';
 
 const log = (...a) => console.log(`[${new Date().toLocaleTimeString()}]`, ...a);
@@ -30,6 +30,7 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
   let offersBuf = [];
   let categoriesBuf = [];
   let offersTotal = 0, categoriesTotal = 0;
+  let bytesRead = 0;
 
   const flushOffers = () => {
     if (offersBuf.length === 0) return;
@@ -157,7 +158,9 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       try {
         const stream = await openFeed(feedUrl);
         stream.on('error', reject);
-        stream.pipe(parser);
+        const counter = new PassThrough();
+        counter.on('data', (chunk) => { bytesRead += chunk.length; });
+        stream.pipe(counter).pipe(parser);
       } catch (e) {
         reject(e);
       }
@@ -168,15 +171,17 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       status: 'success',
       offers_processed: offersTotal,
       categories_processed: categoriesTotal,
+      file_size_bytes: bytesRead,
     });
-    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal}`);
-    return { importId, offersTotal, categoriesTotal };
+    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal} size=${bytesRead} байт`);
+    return { importId, offersTotal, categoriesTotal, bytesRead };
   } catch (e) {
     updateSupplierImport(importId, {
       finished_at: new Date().toISOString(),
       status: 'error',
       offers_processed: offersTotal,
       categories_processed: categoriesTotal,
+      file_size_bytes: bytesRead,
       error_message: e.message,
     });
     throw e;

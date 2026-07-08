@@ -93,6 +93,8 @@ try { db.exec('ALTER TABLE commissions ADD COLUMN logistics_amount REAL'); } cat
 try { db.exec('ALTER TABLE commissions ADD COLUMN delivery_amount REAL'); } catch {}
 try { db.exec('ALTER TABLE commissions ADD COLUMN middle_mile_amount REAL'); } catch {}
 try { db.exec('ALTER TABLE commissions ADD COLUMN fee_percent REAL'); } catch {}
+try { db.exec('ALTER TABLE supplier_imports ADD COLUMN file_size_bytes INTEGER'); } catch {}
+try { db.exec('ALTER TABLE feed_generations ADD COLUMN file_size_bytes INTEGER'); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS supplier_offers (

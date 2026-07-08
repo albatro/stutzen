@@ -490,6 +490,7 @@ app.get('/api/ym/price-feed/stats', (req, res) => {
     generating: s.generating,
     last_error: s.last_error,
     last_duration_ms: s.last_duration_ms,
+    file_size_bytes: s.file_size_bytes,
   });
 });
 

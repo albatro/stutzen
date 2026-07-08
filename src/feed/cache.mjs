@@ -20,6 +20,7 @@ const state = {
   generating: false,
   last_error: null,
   last_duration_ms: null,
+  file_size_bytes: null,
 };
 
 export function getFeedState() { return state; }
@@ -34,6 +35,7 @@ export async function regenerateFeed() {
     const xml = renderFeedXml(offers);
     const generated_at = new Date().toISOString();
     const durationMs = Date.now() - t0;
+    const fileSizeBytes = Buffer.byteLength(xml, 'utf8');
 
     state.xml = xml;
     state.count = offers.length;
@@ -42,6 +44,7 @@ export async function regenerateFeed() {
     state.generated_at = generated_at;
     state.last_error = null;
     state.last_duration_ms = durationMs;
+    state.file_size_bytes = fileSizeBytes;
 
     await fs.mkdir(path.dirname(FEED_PATH), { recursive: true });
     await fs.writeFile(FEED_PATH, xml, 'utf8');
@@ -51,6 +54,7 @@ export async function regenerateFeed() {
       skipped_no_rule: state.skipped_no_rule,
       generated_at,
       last_duration_ms: durationMs,
+      file_size_bytes: fileSizeBytes,
     }, null, 2));
 
     updateFeedGeneration(genId, {
@@ -60,10 +64,11 @@ export async function regenerateFeed() {
       skipped_below_purchase: skippedBelowPurchase,
       skipped_no_rule: skippedNoRule,
       duration_ms: durationMs,
+      file_size_bytes: fileSizeBytes,
     });
 
-    console.log(`[feed] regenerated: offers=${state.count} skipped=${skippedBelowPurchase + skippedNoRule} in ${durationMs}ms`);
-    return { ok: true, count: state.count, duration_ms: durationMs };
+    console.log(`[feed] regenerated: offers=${state.count} skipped=${skippedBelowPurchase + skippedNoRule} size=${fileSizeBytes} байт in ${durationMs}ms`);
+    return { ok: true, count: state.count, duration_ms: durationMs, file_size_bytes: fileSizeBytes };
   } catch (e) {
     state.last_error = e.message;
     updateFeedGeneration(genId, {
@@ -93,6 +98,7 @@ export async function loadFeedFromDisk() {
     state.skipped_no_rule = meta.skipped_no_rule ?? 0;
     state.generated_at = meta.generated_at ?? null;
     state.last_duration_ms = meta.last_duration_ms ?? null;
+    state.file_size_bytes = meta.file_size_bytes ?? Buffer.byteLength(xml, 'utf8');
     return true;
   } catch { return false; }
 }

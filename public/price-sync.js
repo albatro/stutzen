@@ -205,6 +205,13 @@ async function loadFeedStats() {
       parts.push(`в фиде: <b>${j.count}</b> офферов`);
       const skipped = (j.skipped_below_purchase ?? 0) + (j.skipped_no_rule ?? 0);
       if (skipped) parts.push(`пропущено ${skipped}`);
+      if (j.file_size_bytes != null) {
+        const b = j.file_size_bytes;
+        const sizeStr = b < 1024 ? `${b} Б`
+          : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} КБ`
+          : `${(b / (1024 * 1024)).toFixed(1)} МБ`;
+        parts.push(`размер: <b>${sizeStr}</b>`);
+      }
       parts.push(`обновлён ${relTime(j.generated_at)}`);
       if (j.last_duration_ms != null) parts.push(`за ${(j.last_duration_ms / 1000).toFixed(1)} с`);
       if (j.last_error) parts.push(`<span style="color:#c00">ошибка: ${j.last_error}</span>`);

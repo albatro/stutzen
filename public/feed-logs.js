@@ -11,6 +11,15 @@ const fmtDur = (ms) => {
   const s = Math.round(sec % 60);
   return `${m} мин ${s} с`;
 };
+const fmtBytes = (n) => {
+  if (n == null) return '';
+  const b = Number(n);
+  if (!Number.isFinite(b)) return '';
+  if (b < 1024) return `${b} Б`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} КБ`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+};
 const diffMs = (a, b) => (a && b) ? (new Date(b) - new Date(a)) : null;
 const statusBadge = (s) => `<span class="status ${s}">${s === 'success' ? 'успех' : s === 'error' ? 'ошибка' : 'идёт'}</span>`;
 const escapeHtml = (s) => (s ?? '').toString()
@@ -19,8 +28,9 @@ const escapeHtml = (s) => (s ?? '').toString()
 function renderSupplier(rows) {
   const meta = $('#supplierMeta');
   const last = rows.find(r => r.status === 'success');
+  const sizePart = last && last.file_size_bytes != null ? ` · размер: <b>${fmtBytes(last.file_size_bytes)}</b>` : '';
   meta.innerHTML = last
-    ? `Последнее успешное чтение: <b>${fmtDate(last.finished_at ?? last.started_at)}</b> · офферов: <b>${fmtNum(last.offers_processed)}</b>`
+    ? `Последнее успешное чтение: <b>${fmtDate(last.finished_at ?? last.started_at)}</b> · офферов: <b>${fmtNum(last.offers_processed)}</b>${sizePart}`
     : 'Успешных чтений пока нет';
 
   if (!rows.length) { $('#supplierTable').innerHTML = '<div class="empty">Пусто</div>'; return; }
@@ -35,6 +45,7 @@ function renderSupplier(rows) {
           <th>Статус</th>
           <th class="num">Офферы</th>
           <th class="num">Категории</th>
+          <th class="num">Размер файла</th>
           <th>Ошибка</th>
         </tr>
       </thead>
@@ -48,6 +59,7 @@ function renderSupplier(rows) {
             <td>${statusBadge(r.status)}</td>
             <td class="num">${fmtNum(r.offers_processed)}</td>
             <td class="num">${fmtNum(r.categories_processed)}</td>
+            <td class="num">${fmtBytes(r.file_size_bytes)}</td>
             <td class="err">${escapeHtml(r.error_message)}</td>
           </tr>
         `).join('')}
@@ -59,8 +71,9 @@ function renderSupplier(rows) {
 function renderGenerated(rows) {
   const meta = $('#genMeta');
   const last = rows.find(r => r.status === 'success');
+  const sizePart = last && last.file_size_bytes != null ? ` · размер: <b>${fmtBytes(last.file_size_bytes)}</b>` : '';
   meta.innerHTML = last
-    ? `Последняя генерация: <b>${fmtDate(last.finished_at ?? last.started_at)}</b> · офферов в фиде: <b>${fmtNum(last.count)}</b>`
+    ? `Последняя генерация: <b>${fmtDate(last.finished_at ?? last.started_at)}</b> · офферов в фиде: <b>${fmtNum(last.count)}</b>${sizePart}`
     : 'Успешных генераций пока нет';
 
   if (!rows.length) { $('#genTable').innerHTML = '<div class="empty">Пусто</div>'; return; }
@@ -76,6 +89,7 @@ function renderGenerated(rows) {
           <th class="num">Офферов в фиде</th>
           <th class="num">Ниже закупки</th>
           <th class="num">Без правила</th>
+          <th class="num">Размер файла</th>
           <th>Ошибка</th>
         </tr>
       </thead>
@@ -90,6 +104,7 @@ function renderGenerated(rows) {
             <td class="num">${fmtNum(r.count)}</td>
             <td class="num">${fmtNum(r.skipped_below_purchase)}</td>
             <td class="num">${fmtNum(r.skipped_no_rule)}</td>
+            <td class="num">${fmtBytes(r.file_size_bytes)}</td>
             <td class="err">${escapeHtml(r.error_message)}</td>
           </tr>
         `).join('')}
@@ -114,4 +129,50 @@ async function load() {
 }
 
 $('#refresh').addEventListener('click', load);
+
+let pollTimer = null;
+async function pollFeedStatus() {
+  try {
+    const s = await fetch('/api/ym/price-feed/stats').then(r => r.json());
+    const status = $('#regenStatus');
+    if (s.generating) {
+      status.textContent = 'Генерация идёт…';
+      $('#regen').disabled = true;
+    } else {
+      $('#regen').disabled = false;
+      if (s.last_error) {
+        status.textContent = `Ошибка: ${s.last_error}`;
+      } else if (s.generated_at) {
+        const parts = [`офферов: ${fmtNum(s.count)}`];
+        if (s.file_size_bytes != null) parts.push(`размер: ${fmtBytes(s.file_size_bytes)}`);
+        if (s.last_duration_ms != null) parts.push(`за ${fmtDur(s.last_duration_ms)}`);
+        status.textContent = `Готово ${fmtDate(s.generated_at)} · ${parts.join(' · ')}`;
+      } else {
+        status.textContent = '';
+      }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; load(); }
+    }
+  } catch {}
+}
+
+$('#regen').addEventListener('click', async () => {
+  const btn = $('#regen');
+  btn.disabled = true;
+  $('#regenStatus').textContent = 'Запускаю…';
+  try {
+    const r = await fetch('/api/ym/price-feed/regenerate', { method: 'POST' }).then(r => r.json());
+    if (r.error) {
+      $('#regenStatus').textContent = `Ошибка: ${r.error}`;
+      btn.disabled = false;
+      return;
+    }
+    if (!pollTimer) pollTimer = setInterval(pollFeedStatus, 2000);
+    pollFeedStatus();
+  } catch (e) {
+    $('#regenStatus').textContent = `Ошибка: ${e.message}`;
+    btn.disabled = false;
+  }
+});
+
 load();
+pollFeedStatus();
