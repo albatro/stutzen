@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import cron from 'node-cron';
 import { collectFeedOffers, renderFeedXml } from './generate.mjs';
+import { startFeedGeneration, updateFeedGeneration } from '../db.mjs';
 
 const FEED_PATH = path.resolve('data/price-feed.xml');
 const META_PATH = path.resolve('data/price-feed.meta.json');
@@ -27,6 +28,7 @@ export async function regenerateFeed() {
   if (state.generating) return { skipped: 'already_running' };
   state.generating = true;
   const t0 = Date.now();
+  const genId = startFeedGeneration();
   try {
     const { offers, skippedBelowPurchase, skippedNoRule } = collectFeedOffers();
     const xml = renderFeedXml(offers);
@@ -51,10 +53,25 @@ export async function regenerateFeed() {
       last_duration_ms: durationMs,
     }, null, 2));
 
+    updateFeedGeneration(genId, {
+      finished_at: generated_at,
+      status: 'success',
+      count: state.count,
+      skipped_below_purchase: skippedBelowPurchase,
+      skipped_no_rule: skippedNoRule,
+      duration_ms: durationMs,
+    });
+
     console.log(`[feed] regenerated: offers=${state.count} skipped=${skippedBelowPurchase + skippedNoRule} in ${durationMs}ms`);
     return { ok: true, count: state.count, duration_ms: durationMs };
   } catch (e) {
     state.last_error = e.message;
+    updateFeedGeneration(genId, {
+      finished_at: new Date().toISOString(),
+      status: 'error',
+      duration_ms: Date.now() - t0,
+      error_message: e.message,
+    });
     console.error('[feed] regen failed:', e);
     return { error: e.message };
   } finally {

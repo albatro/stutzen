@@ -136,6 +136,19 @@ db.exec(`
     error_message TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS feed_generations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL,
+    count INTEGER DEFAULT 0,
+    skipped_below_purchase INTEGER DEFAULT 0,
+    skipped_no_rule INTEGER DEFAULT 0,
+    duration_ms INTEGER,
+    error_message TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_feed_generations_started ON feed_generations(started_at DESC);
+
   CREATE TABLE IF NOT EXISTS markup_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scope TEXT NOT NULL,             -- 'global' | 'category'
@@ -408,6 +421,18 @@ export function updateSupplierImport(id, fields) {
   if (keys.length === 0) return;
   const sets = keys.map(k => `${k} = ?`).join(', ');
   db.prepare(`UPDATE supplier_imports SET ${sets} WHERE id = ?`).run(...keys.map(k => fields[k]), id);
+}
+
+export function startFeedGeneration() {
+  const r = db.prepare(`INSERT INTO feed_generations (started_at, status) VALUES (?, 'running')`).run(new Date().toISOString());
+  return Number(r.lastInsertRowid);
+}
+
+export function updateFeedGeneration(id, fields) {
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return;
+  const sets = keys.map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE feed_generations SET ${sets} WHERE id = ?`).run(...keys.map(k => fields[k]), id);
 }
 
 export function inTx(fn) {

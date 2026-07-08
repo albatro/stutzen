@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — логи фидов</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    h2 { margin: 20px 0 8px; font-size: 15px; }
+    .nav { font-size: 13px; margin-bottom: 8px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+    .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; padding: 6px 10px; font-size: 14px; }
+    button:disabled { background: #ddd; cursor: wait; }
+    .hint { color: #666; font-size: 13px; }
+    .card { border: 1px solid #e5e5e5; border-radius: 6px; padding: 12px 14px; margin-bottom: 16px; }
+    .card .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid #eee; text-align: left; vertical-align: top; }
+    th { background: #fafafa; font-weight: 600; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .status { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.running { background: #fff3cd; color: #856404; }
+    .empty { color: #999; padding: 12px 0; }
+    .err { color: #c00; font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
+    .kv { color: #555; font-size: 13px; }
+    .kv b { color: #222; }
+  </style>
+</head>
+<body>
+  <h1>Логи фидов</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/supplier.html">Поставщик</a>
+    <a href="/markup.html">Наценка</a>
+    <a href="/price-sync.html">Сверка и отправка цен</a>
+    <a href="/sales.html">Продажи</a>
+    <a href="/cancellations.html">Отмены</a>
+    <a href="/feed-logs.html" class="active">Логи фидов</a>
+  </div>
+
+  <div class="bar">
+    <button id="refresh">Обновить</button>
+    <span class="hint">История чтения фида поставщика и генерации нашего YML-фида для Я.Маркета.</span>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2 style="margin:0">Чтение фида поставщика (Stutzen)</h2>
+      <span class="kv" id="supplierMeta"></span>
+    </div>
+    <div id="supplierTable"></div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2 style="margin:0">Генерация нашего YML-фида</h2>
+      <span class="kv" id="genMeta"></span>
+    </div>
+    <div id="genTable"></div>
+  </div>
+
+  <script src="/feed-logs.js"></script>
+</body>
+</html>

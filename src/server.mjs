@@ -499,6 +499,19 @@ app.post('/api/ym/price-feed/regenerate', async (req, res) => {
   res.json({ ok: true, message: 'генерация запущена' });
 });
 
+// ---- Логи фидов: чтение фида поставщика + генерация нашего фида ----
+app.get('/api/feed-logs/supplier', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
+  const rows = db.prepare(`SELECT * FROM supplier_imports ORDER BY id DESC LIMIT ?`).all(limit);
+  res.json({ rows });
+});
+
+app.get('/api/feed-logs/generated', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
+  const rows = db.prepare(`SELECT * FROM feed_generations ORDER BY id DESC LIMIT ?`).all(limit);
+  res.json({ rows });
+});
+
 // ---- Продажи ----
 app.post('/api/sales/import', async (req, res) => {
   if (salesImportInProgress) return res.status(409).json({ error: 'Импорт уже идёт' });
