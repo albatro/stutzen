@@ -32,14 +32,20 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
   let offersTotal = 0, categoriesTotal = 0;
   let bytesRead = 0;
 
+  const fmtBytes = (n) => {
+    if (n < 1024) return `${n} Б`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
+    return `${(n / (1024 * 1024)).toFixed(1)} МБ`;
+  };
+
   const flushOffers = () => {
     if (offersBuf.length === 0) return;
     inTx(() => { for (const o of offersBuf) upsertSupplierOffer(o); });
     offersTotal += offersBuf.length;
     offersBuf = [];
     if (offersTotal % 5000 === 0) {
-      log(`offers=${offersTotal} categories=${categoriesTotal}`);
-      updateSupplierImport(importId, { offers_processed: offersTotal, categories_processed: categoriesTotal });
+      log(`offers=${offersTotal} categories=${categoriesTotal} прочитано=${fmtBytes(bytesRead)}`);
+      updateSupplierImport(importId, { offers_processed: offersTotal, categories_processed: categoriesTotal, file_size_bytes: bytesRead });
     }
   };
 
@@ -173,7 +179,7 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       categories_processed: categoriesTotal,
       file_size_bytes: bytesRead,
     });
-    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal} size=${bytesRead} байт`);
+    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal} размер=${fmtBytes(bytesRead)}`);
     return { importId, offersTotal, categoriesTotal, bytesRead };
   } catch (e) {
     updateSupplierImport(importId, {

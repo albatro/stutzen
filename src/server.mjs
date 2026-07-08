@@ -1013,7 +1013,7 @@ app.get('/api/sales/monthly.csv', (req, res) => {
 });
 
 // ---- Cron ----
-const SYNC_CRON = process.env.SYNC_CRON;
+const SYNC_CRON = process.env.SYNC_CRON ?? null;
 if (SYNC_CRON) {
   cron.schedule(SYNC_CRON, async () => {
     if (syncInProgress) return;
@@ -1021,12 +1021,31 @@ if (SYNC_CRON) {
     try { await runSync(); } catch (e) { console.error('cron sync failed:', e); }
     finally { syncInProgress = false; }
   });
-  console.log(`Cron: ${SYNC_CRON}`);
+  console.log(`Cron sync: ${SYNC_CRON}`);
 }
 
+// Импорт фида поставщика по расписанию (переопределяется SUPPLIER_CRON, дефолт — раз в 6 часов).
+const SUPPLIER_CRON = process.env.SUPPLIER_CRON ?? '0 */6 * * *';
+cron.schedule(SUPPLIER_CRON, async () => {
+  if (supplierImportInProgress) return;
+  supplierImportInProgress = true;
+  try { await runSupplierImport(); } catch (e) { console.error('cron supplier import failed:', e); }
+  finally { supplierImportInProgress = false; }
+});
+console.log(`Cron supplier: ${SUPPLIER_CRON}`);
+
 // YML-фид: восстанавливаем из data/ + расписание раз в час (переопределяется FEED_CRON).
+const FEED_CRON = process.env.FEED_CRON ?? '0 * * * *';
 initFeedCache().catch(e => console.error('feed init failed:', e));
-scheduleFeedRegeneration(process.env.FEED_CRON ?? '0 * * * *');
+scheduleFeedRegeneration(FEED_CRON);
+
+app.get('/api/feed-logs/schedule', (_req, res) => {
+  res.json({
+    supplier_cron: SUPPLIER_CRON,
+    feed_cron: FEED_CRON,
+    sync_cron: SYNC_CRON,
+  });
+});
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => console.log(`http://localhost:${PORT}`));
