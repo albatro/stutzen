@@ -59,21 +59,6 @@ const table = new Tabulator('#table', {
     { title: 'Категория ЯМ', field: 'category_name', width: 200 },
     { title: 'Цена в фиде, ₽', field: 'new_price', width: 130, hozAlign: 'right',
       formatter: (c) => `<b>${fmtMoney(c.getValue())}</b>` },
-    { title: 'Закупочная, ₽', field: 'purchase_price', width: 120, hozAlign: 'right', formatter: (c) => fmtMoney(c.getValue()) },
-    { title: 'Маржа, ₽', field: 'margin', width: 110, hozAlign: 'right',
-      formatter: (c) => {
-        const v = c.getValue();
-        if (v == null) return '';
-        const cls = v < 0 ? 'color:#c00;font-weight:bold' : (v > 0 ? 'color:#080' : '');
-        return `<span style="${cls}">${fmtMoney(v)}</span>`;
-      } },
-    { title: 'Маржа, %', field: 'margin_percent', width: 100, hozAlign: 'right',
-      formatter: (c) => {
-        const v = c.getValue();
-        if (v == null) return '';
-        const cls = v < 0 ? 'color:#c00;font-weight:bold' : (v > 50 ? 'color:#080' : '');
-        return `<span style="${cls}">${fmtPct(v)}</span>`;
-      } },
     { title: 'В наличии', field: 'available', width: 90, hozAlign: 'center',
       formatter: (c) => c.getValue() === 1 ? '<span class="badge yes">да</span>' : '<span class="badge no">нет</span>' },
     { title: 'Остаток, шт', field: 'count', width: 100, hozAlign: 'right' },
