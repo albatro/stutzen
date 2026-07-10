@@ -13,6 +13,7 @@ const STALE_MS = 60 * 60 * 1000; // 1 час
 
 const state = {
   xml: null,
+  offers: null,          // облегчённый массив офферов, показывается в /feed-view.html
   count: 0,
   skipped_below_purchase: 0,
   skipped_no_rule: 0,
@@ -22,6 +23,40 @@ const state = {
   last_duration_ms: null,
   file_size_bytes: null,
 };
+
+// Оставляем только нужные для UI поля, чтобы не держать в памяти ~120МБ вместо ~30МБ.
+function projectOfferForCache(o) {
+  const image_url = o.image_url ?? o.supplier_picture ?? null;
+  const name = o.name ?? o.supplier_name ?? null;
+  const vendor = o.vendor ?? o.supplier_vendor ?? null;
+  const weight = o.weight ?? o.supplier_weight ?? null;
+  const dimensions = o.supplier_dimensions
+    ?? (o.length && o.width && o.height ? `${o.length}/${o.width}/${o.height}` : null);
+  const margin = (o.new_price != null && o.purchase_price != null)
+    ? Math.round((o.new_price - o.purchase_price) * 100) / 100 : null;
+  const margin_percent = (margin != null && o.purchase_price > 0)
+    ? Math.round(margin / o.purchase_price * 1000) / 10 : null;
+  return {
+    offer_id: o.offer_id,
+    name,
+    category_id: o.category_id ?? null,
+    category_name: o.category_name ?? null,
+    supplier_category_id: o.supplier_category_id ?? null,
+    new_price: o.new_price,
+    purchase_price: o.purchase_price ?? null,
+    margin,
+    margin_percent,
+    image_url,
+    vendor,
+    vendor_code: o.vendor_code ?? null,
+    weight,
+    dimensions,
+    count: o.supplier_count ?? null,
+    available: o.supplier_available === 0 ? 0 : 1,
+    country: o.country ?? null,
+    url: o.supplier_url ?? null,
+  };
+}
 
 export function getFeedState() { return state; }
 
@@ -38,6 +73,7 @@ export async function regenerateFeed() {
     const fileSizeBytes = Buffer.byteLength(xml, 'utf8');
 
     state.xml = xml;
+    state.offers = offers.map(projectOfferForCache);
     state.count = offers.length;
     state.skipped_below_purchase = skippedBelowPurchase;
     state.skipped_no_rule = skippedNoRule;
@@ -114,6 +150,19 @@ export async function initFeedCache() {
   } else {
     console.log(`[feed] loaded from disk: offers=${state.count} generated_at=${state.generated_at}`);
   }
+}
+
+/**
+ * Гарантирует, что state.offers заполнен для UI /feed-view.html.
+ * После загрузки XML с диска offers[] пуст (не сериализуем в meta), поэтому
+ * при первом заходе на страницу докидываем облегчённый снапшот из БД.
+ */
+export function ensureOffersCache() {
+  if (state.offers) return state.offers;
+  if (!state.xml || state.generating) return null;
+  const { offers } = collectFeedOffers();
+  state.offers = offers.map(projectOfferForCache);
+  return state.offers;
 }
 
 export function scheduleFeedRegeneration(expr = '0 * * * *') {

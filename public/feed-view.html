@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Stutzen — поставщик</title>
+  <title>Stutzen — сгенерированный фид</title>
   <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_simple.min.css" rel="stylesheet">
   <style>
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
@@ -15,12 +15,16 @@
     .bar input[type=text] { width: 260px; }
     button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; }
     button:disabled { background: #ddd; cursor: wait; }
-    .stats { font-size: 13px; color: #555; }
-    #table { height: calc(100vh - 160px); }
+    .meta { font-size: 13px; color: #555; }
+    .meta b { color: #222; }
+    .meta a { color: #06c; text-decoration: none; }
+    .meta a:hover { text-decoration: underline; }
+    #table { height: calc(100vh - 180px); }
     .thumb { width: 40px; height: 40px; object-fit: contain; }
     .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
     .badge.yes { background: #d4edda; color: #155724; }
     .badge.no { background: #f8d7da; color: #721c24; }
+    .empty { color: #999; padding: 24px 0; text-align: center; }
 
     .tabulator .tabulator-header,
     .tabulator .tabulator-header-contents,
@@ -38,54 +42,39 @@
       line-height: 1.2;
     }
     .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px; }
-
-    /* модалка карточки */
-    .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; }
-    .overlay.open { display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; }
-    .modal { background: #fff; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; border-radius: 6px; padding: 20px 24px; }
-    .modal h2 { margin: 0 0 12px; font-size: 16px; }
-    .modal .close { float: right; background: #eee; border: none; padding: 4px 10px; cursor: pointer; font-size: 14px; }
-    .modal table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .modal table td { padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-    .modal table td:first-child { color: #666; width: 200px; }
-    .modal .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .modal h3 { font-size: 13px; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #ddd; }
-    .modal img { max-width: 200px; max-height: 200px; object-fit: contain; margin-top: 6px; }
   </style>
 </head>
 <body>
-  <h1>Товары поставщика (Stutzen-Ug)</h1>
+  <h1>Сгенерированный фид для Я.Маркета</h1>
   <div class="nav">
     <a href="/">Я.Маркет</a>
-    <a href="/supplier.html" class="active">Поставщик</a>
+    <a href="/supplier.html">Поставщик</a>
     <a href="/markup.html">Наценка</a>
     <a href="/price-sync.html">Сверка и отправка цен</a>
     <a href="/sales.html">Продажи</a>
     <a href="/cancellations.html">Отмены</a>
     <a href="/feed-logs.html">Логи фидов</a>
-    <a href="/feed-view.html">Смотреть фид</a>
+    <a href="/feed-view.html" class="active">Смотреть фид</a>
   </div>
+
+  <div class="meta" id="meta">Загружаю…</div>
+
   <div class="bar">
     <input id="search" type="text" placeholder="поиск по SKU / артикулу / названию / бренду">
-    <select id="category"><option value="">Все категории</option></select>
-    <label><input type="checkbox" id="onlyAvail" checked> только в наличии</label>
-    <select id="margin">
-      <option value="">Маржа: любая</option>
-      <option value="negative">Отрицательная</option>
-      <option value="lt10">Меньше 10%</option>
-      <option value="lt20">Меньше 20%</option>
-      <option value="20to50">От 20% до 50%</option>
-      <option value="gt50">Больше 50%</option>
+    <select id="category"><option value="">Все категории ЯМ</option></select>
+    <select id="availability">
+      <option value="">В наличии: любое</option>
+      <option value="yes">Только доступные</option>
+      <option value="no">Только недоступные</option>
     </select>
-    <button id="refresh">Обновить таблицу</button>
-    <button id="importBtn">Импорт из фида</button>
-    <span class="stats" id="stats">…</span>
+    <button id="refresh">Обновить</button>
+    <button id="regen">↻ Пересобрать фид</button>
+    <a href="/api/ym/price-feed.xml" target="_blank" style="margin-left:auto;font-size:13px;color:#06c;">Открыть XML →</a>
   </div>
+
   <div id="table"></div>
 
-  <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
-
   <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
-  <script src="/supplier.js"></script>
+  <script src="/feed-view.js"></script>
 </body>
 </html>

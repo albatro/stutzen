@@ -6,7 +6,7 @@ import { runSupplierImport } from './supplier/import.mjs';
 import { runSalesImport } from './sales/import.mjs';
 import { ym } from './ym/client.mjs';
 import { calcTargetPrice } from './pricing/calculator.mjs';
-import { getFeedState, regenerateFeed, initFeedCache, scheduleFeedRegeneration } from './feed/cache.mjs';
+import { getFeedState, regenerateFeed, initFeedCache, scheduleFeedRegeneration, ensureOffersCache } from './feed/cache.mjs';
 
 const app = express();
 app.use(express.json());
@@ -498,6 +498,68 @@ app.post('/api/ym/price-feed/regenerate', async (req, res) => {
   if (getFeedState().generating) return res.status(409).json({ error: 'генерация уже идёт' });
   regenerateFeed().catch(() => {});
   res.json({ ok: true, message: 'генерация запущена' });
+});
+
+// Оффера из сгенерированного фида в JSON — для страницы /feed-view.html,
+// чтобы можно было посмотреть YML в разобранном виде без парсинга XML на клиенте.
+app.get('/api/ym/price-feed/rows', (req, res) => {
+  const s = getFeedState();
+  const offers = ensureOffersCache();
+  if (!offers) {
+    return res.status(503).set('Retry-After', '30').json({ error: 'фид ещё готовится' });
+  }
+  const search = (req.query.search ?? '').toString().trim().toLowerCase();
+  const category = req.query.category ? Number(req.query.category) : null;
+  const availability = (req.query.availability ?? '').toString(); // '', 'yes', 'no'
+  const sort = (req.query.sort ?? 'offer_id').toString();
+  const dir = req.query.dir === 'desc' ? 'desc' : 'asc';
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 2000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+  let rows = offers;
+  if (search) {
+    rows = rows.filter(o =>
+      (o.offer_id ?? '').toLowerCase().includes(search)
+      || (o.name ?? '').toLowerCase().includes(search)
+      || (o.vendor_code ?? '').toLowerCase().includes(search)
+      || (o.vendor ?? '').toLowerCase().includes(search)
+    );
+  }
+  if (category != null) rows = rows.filter(o => o.category_id === category);
+  if (availability === 'yes') rows = rows.filter(o => o.available === 1);
+  else if (availability === 'no') rows = rows.filter(o => o.available !== 1);
+
+  const sortable = new Set(['offer_id', 'name', 'category_name', 'new_price', 'purchase_price', 'margin', 'margin_percent', 'count', 'weight', 'vendor']);
+  const key = sortable.has(sort) ? sort : 'offer_id';
+  rows = rows.slice().sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return dir === 'asc' ? (av > bv ? 1 : av < bv ? -1 : 0) : (av < bv ? 1 : av > bv ? -1 : 0);
+  });
+
+  res.json({
+    total: rows.length,
+    generated_at: s.generated_at,
+    file_size_bytes: s.file_size_bytes,
+    rows: rows.slice(offset, offset + limit),
+  });
+});
+
+app.get('/api/ym/price-feed/categories', (_req, res) => {
+  const offers = ensureOffersCache();
+  if (!offers) return res.status(503).json({ error: 'фид ещё готовится' });
+  const map = new Map();
+  for (const o of offers) {
+    if (o.category_id == null) continue;
+    const key = o.category_id;
+    const cur = map.get(key);
+    if (cur) cur.cnt++;
+    else map.set(key, { category_id: key, category_name: o.category_name, cnt: 1 });
+  }
+  const rows = [...map.values()].sort((a, b) => b.cnt - a.cnt);
+  res.json(rows);
 });
 
 // ---- Логи фидов: чтение фида поставщика + генерация нашего фида ----
