@@ -166,16 +166,27 @@ async function loadCategories() {
     cats.map(c => `<option value="${c.category_id}">${(c.category_name ?? '—')} (${c.cnt})</option>`).join('');
 }
 
+const fmtBytes = (n) => {
+  if (n == null) return '';
+  const b = Number(n);
+  if (!Number.isFinite(b)) return '';
+  if (b < 1024) return `${b} Б`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} КБ`;
+  return `${(b / (1024 * 1024)).toFixed(1)} МБ`;
+};
+
 async function pollStats() {
   const r = await fetch('/api/supplier/stats');
   const { stats, lastImport, supplierImportInProgress } = await r.json();
+  const sizePart = lastImport?.file_size_bytes ? `, размер ${fmtBytes(lastImport.file_size_bytes)}` : '';
   const last = lastImport
-    ? `последний импорт: ${new Date(lastImport.started_at).toLocaleString('ru-RU')} — ${lastImport.status}, офферов ${lastImport.offers_processed ?? 0}`
+    ? `последний импорт: ${new Date(lastImport.started_at).toLocaleString('ru-RU')} — ${lastImport.status}, офферов ${lastImport.offers_processed ?? 0}${sizePart}`
     : 'импортов пока не было';
   $('#stats').textContent = `Поставщик: офферов ${stats.offers}, в наличии ${stats.available}, совпадает с ЯМ ${stats.matched_in_ym}, категорий ${stats.categories}. ${last}`;
   const btn = $('#importBtn');
   if (supplierImportInProgress) {
-    btn.disabled = true; btn.textContent = `Импорт… (${lastImport?.offers_processed ?? 0})`;
+    const progress = lastImport?.file_size_bytes ? `${lastImport?.offers_processed ?? 0}, ${fmtBytes(lastImport.file_size_bytes)}` : `${lastImport?.offers_processed ?? 0}`;
+    btn.disabled = true; btn.textContent = `Импорт… (${progress})`;
     setTimeout(pollStats, 2000);
   } else {
     btn.disabled = false; btn.textContent = 'Импорт из фида';

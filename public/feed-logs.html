@@ -29,6 +29,8 @@
     .kv { color: #555; font-size: 13px; }
     .kv b { color: #222; }
     .cron { display: inline-block; padding: 1px 8px; border-radius: 3px; background: #eef4ff; color: #06c; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+    .feed-link { word-break: break-all; color: #06c; text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+    .feed-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -54,6 +56,7 @@
       <span class="kv" id="supplierMeta"></span>
     </div>
     <div class="kv" style="margin-bottom:8px">Расписание: <span class="cron" id="supplierCron">—</span> <span id="supplierCronHint" class="hint"></span></div>
+    <div class="kv" style="margin-bottom:8px">Ссылка на фид: <a id="supplierFeedLink" class="feed-link" target="_blank" rel="noopener">—</a></div>
     <div id="supplierTable"></div>
   </div>
 
@@ -63,6 +66,7 @@
       <span class="kv" id="genMeta"></span>
     </div>
     <div class="kv" style="margin-bottom:8px">Расписание: <span class="cron" id="feedCron">—</span> <span id="feedCronHint" class="hint"></span></div>
+    <div class="kv" style="margin-bottom:8px">Ссылка на фид: <a id="generatedFeedLink" class="feed-link" href="/api/ym/price-feed.xml" target="_blank" rel="noopener">/api/ym/price-feed.xml</a></div>
     <div class="bar" style="margin-bottom:8px">
       <button id="regen">↻ Пересобрать фид с новыми ценами</button>
       <span class="hint" id="regenStatus"></span>

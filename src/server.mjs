@@ -1024,15 +1024,39 @@ if (SYNC_CRON) {
   console.log(`Cron sync: ${SYNC_CRON}`);
 }
 
-// Импорт фида поставщика по расписанию (переопределяется SUPPLIER_CRON, дефолт — раз в 6 часов).
-const SUPPLIER_CRON = process.env.SUPPLIER_CRON ?? '0 */6 * * *';
-cron.schedule(SUPPLIER_CRON, async () => {
+// Импорт фида поставщика: проверяем каждый час и импортим, если последнее успешное
+// чтение было давно (SUPPLIER_STALE_HOURS, дефолт 6). Раньше был '0 */6 * * *' —
+// но на проде он почему-то не срабатывал (в supplier_imports неделями не появлялось
+// строк, хотя FEED_CRON '0 * * * *' пахал исправно), поэтому переехали на такой же
+// hourly-паттерн + гейт по свежести. При старте, если фид старый — читаем сразу.
+const SUPPLIER_CRON = process.env.SUPPLIER_CRON ?? '0 * * * *';
+const SUPPLIER_STALE_HOURS = Number(process.env.SUPPLIER_STALE_HOURS) || 6;
+const SUPPLIER_STALE_MS = SUPPLIER_STALE_HOURS * 60 * 60 * 1000;
+
+function lastSupplierImportSuccessAt() {
+  const row = db.prepare(
+    `SELECT started_at FROM supplier_imports WHERE status = 'success' ORDER BY id DESC LIMIT 1`
+  ).get();
+  return row ? Date.parse(row.started_at) : null;
+}
+
+function triggerSupplierImportIfStale(source) {
   if (supplierImportInProgress) return;
+  const lastAt = lastSupplierImportSuccessAt();
+  if (lastAt != null && (Date.now() - lastAt) <= SUPPLIER_STALE_MS) return;
   supplierImportInProgress = true;
-  try { await runSupplierImport(); } catch (e) { console.error('cron supplier import failed:', e); }
-  finally { supplierImportInProgress = false; }
-});
-console.log(`Cron supplier: ${SUPPLIER_CRON}`);
+  const ageH = lastAt == null ? 'never' : `${((Date.now() - lastAt) / 3600e3).toFixed(1)}h`;
+  console.log(`[supplier] auto import (${source}, last=${ageH})`);
+  runSupplierImport()
+    .catch(e => console.error(`[supplier] auto import failed (${source}):`, e))
+    .finally(() => { supplierImportInProgress = false; });
+}
+
+cron.schedule(SUPPLIER_CRON, () => triggerSupplierImportIfStale('cron'));
+console.log(`Cron supplier: ${SUPPLIER_CRON} (импорт если давностью > ${SUPPLIER_STALE_HOURS}ч)`);
+
+// При старте: если ни разу не читали или прошло больше SUPPLIER_STALE_HOURS — читаем через 30с.
+setTimeout(() => triggerSupplierImportIfStale('startup'), 30_000).unref();
 
 // YML-фид: восстанавливаем из data/ + расписание раз в час (переопределяется FEED_CRON).
 const FEED_CRON = process.env.FEED_CRON ?? '0 * * * *';
@@ -1040,10 +1064,15 @@ initFeedCache().catch(e => console.error('feed init failed:', e));
 scheduleFeedRegeneration(FEED_CRON);
 
 app.get('/api/feed-logs/schedule', (_req, res) => {
+  const lastAt = lastSupplierImportSuccessAt();
   res.json({
     supplier_cron: SUPPLIER_CRON,
+    supplier_stale_hours: SUPPLIER_STALE_HOURS,
+    supplier_last_success_at: lastAt ? new Date(lastAt).toISOString() : null,
     feed_cron: FEED_CRON,
     sync_cron: SYNC_CRON,
+    supplier_feed_url: process.env.SUPPLIER_FEED_URL ?? null,
+    generated_feed_url: '/api/ym/price-feed.xml',
   });
 });
 

@@ -145,9 +145,25 @@ async function load() {
     renderGenerated(generated.rows ?? []);
     if (schedule) {
       $('#supplierCron').textContent = schedule.supplier_cron ?? '—';
-      $('#supplierCronHint').textContent = describeCron(schedule.supplier_cron);
+      const cronHint = describeCron(schedule.supplier_cron);
+      const staleH = schedule.supplier_stale_hours;
+      const staleHint = staleH ? ` (импорт если предыдущее успешное чтение было больше ${staleH} ч назад)` : '';
+      $('#supplierCronHint').textContent = `${cronHint}${staleHint}`;
       $('#feedCron').textContent = schedule.feed_cron ?? '—';
       $('#feedCronHint').textContent = describeCron(schedule.feed_cron);
+      const supLink = $('#supplierFeedLink');
+      if (schedule.supplier_feed_url) {
+        supLink.href = schedule.supplier_feed_url;
+        supLink.textContent = schedule.supplier_feed_url;
+      } else {
+        supLink.removeAttribute('href');
+        supLink.textContent = 'SUPPLIER_FEED_URL не задан';
+      }
+      if (schedule.generated_feed_url) {
+        const gen = $('#generatedFeedLink');
+        gen.href = schedule.generated_feed_url;
+        gen.textContent = new URL(schedule.generated_feed_url, location.href).href;
+      }
     }
   } finally {
     btn.disabled = false;
