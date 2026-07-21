@@ -102,7 +102,7 @@ export function renderFeedXml(offers, { shopName = 'Stutzen', shopUrl = 'https:/
       ?? (o.length && o.width && o.height ? `${o.length}/${o.width}/${o.height}` : null);
     if (dims) parts.push(`    <dimensions>${escape(dims)}</dimensions>`);
     if (o.supplier_count != null) parts.push(`    <count>${o.supplier_count}</count>`);
-    if (o.supplier_step_quantity != null) parts.push(`    <step-quantity>${o.supplier_step_quantity}</step-quantity>`);
+    parts.push(`    <step-quantity>${o.supplier_step_quantity ?? 1}</step-quantity>`);
     parts.push(`  </offer>`);
   }
   parts.push(`</offers>`);
