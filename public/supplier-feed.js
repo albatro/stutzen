@@ -55,6 +55,7 @@ const table = new Tabulator('#table', {
     { title: 'В наличии', field: 'available', width: 90, hozAlign: 'center',
       formatter: (c) => c.getValue() === 1 ? '<span class="badge yes">да</span>' : '<span class="badge no">нет</span>' },
     { title: 'Остаток, шт', field: 'count', width: 100, hozAlign: 'right' },
+    { title: 'Партийность', field: 'step_quantity', width: 100, hozAlign: 'right' },
     { title: 'Вес, кг', field: 'weight', width: 80, hozAlign: 'right' },
     { title: 'Габариты', field: 'dimensions', width: 110 },
     { title: 'Страна', field: 'country', width: 110 },
@@ -97,6 +98,7 @@ async function showOfferModal(id) {
         ${row('Валюта', escapeHtml(offer.currency))}
         ${row('В наличии', offer.available ? 'да' : 'нет')}
         ${row('Остаток, шт', offer.count)}
+        ${row('Партийность, шт', offer.step_quantity)}
         ${row('Вес, кг', offer.weight)}
         ${row('Габариты', escapeHtml(offer.dimensions))}
         ${row('Страна', escapeHtml(offer.country))}

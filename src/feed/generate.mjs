@@ -31,6 +31,7 @@ export function collectFeedOffers() {
       s.description AS supplier_description, s.supplier_category_id,
       s.vendor AS supplier_vendor, s.vendor_code, s.country,
       s.available AS supplier_available, s.count AS supplier_count,
+      s.step_quantity AS supplier_step_quantity,
       s.dimensions AS supplier_dimensions, s.weight AS supplier_weight,
       s.sales_notes, s.url AS supplier_url
     FROM offers o
@@ -101,6 +102,7 @@ export function renderFeedXml(offers, { shopName = 'Stutzen', shopUrl = 'https:/
       ?? (o.length && o.width && o.height ? `${o.length}/${o.width}/${o.height}` : null);
     if (dims) parts.push(`    <dimensions>${escape(dims)}</dimensions>`);
     if (o.supplier_count != null) parts.push(`    <count>${o.supplier_count}</count>`);
+    if (o.supplier_step_quantity != null) parts.push(`    <step-quantity>${o.supplier_step_quantity}</step-quantity>`);
     parts.push(`  </offer>`);
   }
   parts.push(`</offers>`);

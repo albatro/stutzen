@@ -53,6 +53,7 @@ function projectOfferForCache(o) {
     weight,
     dimensions,
     count: o.supplier_count ?? null,
+    step_quantity: o.supplier_step_quantity ?? null,
     available: o.supplier_available === 0 ? 0 : 1,
     country: o.country ?? null,
     url: o.supplier_url ?? null,

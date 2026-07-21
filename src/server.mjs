@@ -177,7 +177,7 @@ app.get('/api/supplier/offers', (req, res) => {
     SELECT
       s.offer_id, s.name, s.vendor, s.vendor_code, s.picture, s.url,
       s.price, s.purchase_price, s.min_for_bestseller, s.currency,
-      s.count, s.weight, s.country, s.dimensions, s.available,
+      s.count, s.step_quantity, s.weight, s.country, s.dimensions, s.available,
       s.supplier_category_id, cat.name AS category_name,
       s.updated_at,
       CASE WHEN o.offer_id IS NOT NULL THEN 1 ELSE 0 END AS in_ym,
