@@ -43,7 +43,8 @@ function projectOfferForCache(o) {
     category_name: o.category_name ?? null,
     supplier_category_id: o.supplier_category_id ?? null,
     new_price: o.new_price,
-    min_for_bestseller: o.new_price, // в фиде уходит равным <price>
+    feed_price: Math.round(o.new_price * (o.supplier_step_quantity ?? 1) * 100) / 100,
+    min_for_bestseller: o.new_price, // цена за единицу без партийности (для справки)
     purchase_price: o.purchase_price ?? null,
     margin,
     margin_percent,

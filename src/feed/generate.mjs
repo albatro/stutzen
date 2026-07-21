@@ -80,10 +80,12 @@ export function renderFeedXml(offers, { shopName = 'Stutzen', shopUrl = 'https:/
     const available = o.supplier_available === 0 ? 'false' : 'true';
     parts.push(`  <offer id="${escape(o.offer_id)}" available="${available}">`);
     if (o.supplier_url) parts.push(`    <url>${escape(o.supplier_url)}</url>`);
-    parts.push(`    <price>${o.new_price}</price>`);
-    // Мин. цена для участия в акциях/лидере ЯМ. Ставим равной нашей розничной,
+    const stepQty = o.supplier_step_quantity ?? 1;
+    const feedPrice = Math.round(o.new_price * stepQty * 100) / 100;
+    parts.push(`    <price>${feedPrice}</price>`);
+    // Мин. цена для участия в акциях/лидере ЯМ. Ставим равной нашей розничной × партийность,
     // чтобы ЯМ не мог опустить цену ниже нашей в промо-механиках.
-    parts.push(`    <minimum_price_for_bestseller>${o.new_price}</minimum_price_for_bestseller>`);
+    parts.push(`    <minimum_price_for_bestseller>${feedPrice}</minimum_price_for_bestseller>`);
     parts.push(`    <currencyId>RUB</currencyId>`);
     if (o.supplier_category_id != null) parts.push(`    <categoryId>${o.supplier_category_id}</categoryId>`);
     const pic = o.image_url ?? o.supplier_picture;
