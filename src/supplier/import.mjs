@@ -111,6 +111,7 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
           case 'url': cur.url = (cur.url ?? '') + trimmed; break;
           case 'sales_notes': cur.sales_notes = (cur.sales_notes ?? '') + trimmed; break;
           case 'count': cur.count = parseInt(trimmed, 10); break;
+          case 'step-quantity': cur.step_quantity = parseInt(trimmed, 10); break;
           case 'weight': cur.weight = parseFloat(trimmed); break;
           case 'country_of_origin': cur.country = (cur.country ?? '') + trimmed; break;
           case 'dimensions': cur.dimensions = (cur.dimensions ?? '') + trimmed; break;

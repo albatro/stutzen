@@ -95,6 +95,7 @@ try { db.exec('ALTER TABLE commissions ADD COLUMN middle_mile_amount REAL'); } c
 try { db.exec('ALTER TABLE commissions ADD COLUMN fee_percent REAL'); } catch {}
 try { db.exec('ALTER TABLE supplier_imports ADD COLUMN file_size_bytes INTEGER'); } catch {}
 try { db.exec('ALTER TABLE feed_generations ADD COLUMN file_size_bytes INTEGER'); } catch {}
+try { db.exec('ALTER TABLE supplier_offers ADD COLUMN step_quantity INTEGER'); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS supplier_offers (
@@ -376,8 +377,8 @@ export function upsertSupplierOffer(o) {
     INSERT INTO supplier_offers
       (offer_id, available, price, purchase_price, min_for_bestseller, currency,
        supplier_category_id, picture, name, vendor, vendor_code, description, url,
-       sales_notes, count, weight, country, dimensions, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       sales_notes, count, step_quantity, weight, country, dimensions, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(offer_id) DO UPDATE SET
       available = excluded.available,
       price = excluded.price,
@@ -393,6 +394,7 @@ export function upsertSupplierOffer(o) {
       url = excluded.url,
       sales_notes = excluded.sales_notes,
       count = excluded.count,
+      step_quantity = excluded.step_quantity,
       weight = excluded.weight,
       country = excluded.country,
       dimensions = excluded.dimensions,
@@ -402,7 +404,7 @@ export function upsertSupplierOffer(o) {
     o.min_for_bestseller ?? null, o.currency ?? null, o.supplier_category_id ?? null,
     o.picture ?? null, o.name ?? null, o.vendor ?? null, o.vendor_code ?? null,
     o.description ?? null, o.url ?? null, o.sales_notes ?? null, o.count ?? null,
-    o.weight ?? null, o.country ?? null, o.dimensions ?? null, o.updated_at
+    o.step_quantity ?? null, o.weight ?? null, o.country ?? null, o.dimensions ?? null, o.updated_at
   );
 }
 
