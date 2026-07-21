@@ -54,6 +54,7 @@ function projectOfferForCache(o) {
     weight,
     dimensions,
     count: o.supplier_count ?? null,
+    feed_count: o.supplier_count != null ? Math.floor(o.supplier_count / (o.supplier_step_quantity ?? 1)) : null,
     step_quantity: o.supplier_step_quantity ?? 1,
     available: o.supplier_available === 0 ? 0 : 1,
     country: o.country ?? null,
