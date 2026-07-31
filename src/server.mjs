@@ -1134,10 +1134,12 @@ if (SYNC_CRON) {
 // чтение было давно (SUPPLIER_STALE_HOURS, дефолт 6). Раньше был '0 */6 * * *' —
 // но на проде он почему-то не срабатывал (в supplier_imports неделями не появлялось
 // строк, хотя FEED_CRON '0 * * * *' пахал исправно), поэтому переехали на такой же
-// hourly-паттерн + гейт по свежести. При старте, если фид старый — читаем сразу.
-const SUPPLIER_CRON = process.env.SUPPLIER_CRON ?? '0 * * * *';
-const SUPPLIER_STALE_HOURS = Number(process.env.SUPPLIER_STALE_HOURS) || 6;
+// Импорт фида поставщика: каждый час в :SUPPLIER_MINUTE (дефолт :55).
+// При старте: если фид старше SUPPLIER_STALE_HOURS — читаем через 30с.
+const SUPPLIER_MINUTE = Number(process.env.SUPPLIER_MINUTE ?? 55);
+const SUPPLIER_STALE_HOURS = Number(process.env.SUPPLIER_STALE_HOURS) || 1;
 const SUPPLIER_STALE_MS = SUPPLIER_STALE_HOURS * 60 * 60 * 1000;
+let _supplierNextAt = null;
 
 function lastSupplierImportSuccessAt() {
   const row = db.prepare(
@@ -1152,17 +1154,31 @@ function triggerSupplierImportIfStale(source) {
   if (lastAt != null && (Date.now() - lastAt) <= SUPPLIER_STALE_MS) return;
   supplierImportInProgress = true;
   const ageH = lastAt == null ? 'never' : `${((Date.now() - lastAt) / 3600e3).toFixed(1)}h`;
-  console.log(`[supplier] auto import (${source}, last=${ageH})`);
+  console.log(`[supplier] import (${source}, last=${ageH})`);
   runSupplierImport()
-    .catch(e => console.error(`[supplier] auto import failed (${source}):`, e))
+    .catch(e => console.error(`[supplier] import failed (${source}):`, e))
     .finally(() => { supplierImportInProgress = false; });
 }
 
-// node-cron ненадёжен в Docker — используем setInterval напрямую.
-setInterval(() => triggerSupplierImportIfStale('interval'), SUPPLIER_STALE_MS).unref();
-console.log(`Supplier interval: каждые ${SUPPLIER_STALE_HOURS}ч (${SUPPLIER_STALE_MS}мс)`);
+function scheduleSupplierImport() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setMinutes(SUPPLIER_MINUTE, 0, 0);
+  if (next <= now) next.setHours(next.getHours() + 1);
+  _supplierNextAt = next;
+  console.log(`[supplier] следующий авто-импорт в :${String(SUPPLIER_MINUTE).padStart(2, '0')} → ${next.toLocaleTimeString('ru-RU')}`);
+  setTimeout(() => {
+    if (!supplierImportInProgress) {
+      supplierImportInProgress = true;
+      runSupplierImport()
+        .catch(e => console.error('[supplier] scheduled import failed:', e))
+        .finally(() => { supplierImportInProgress = false; });
+    }
+    scheduleSupplierImport(); // следующий час
+  }, next.getTime() - now.getTime()).unref();
+}
 
-// При старте: если ни разу не читали или прошло больше SUPPLIER_STALE_HOURS — читаем через 30с.
+scheduleSupplierImport();
 setTimeout(() => triggerSupplierImportIfStale('startup'), 30_000).unref();
 
 // YML-фид: восстанавливаем из data/ + расписание раз в час (переопределяется FEED_CRON).
@@ -1176,9 +1192,10 @@ app.get('/api/feed-logs/schedule', (_req, res) => {
   const feedRow = db.prepare(`SELECT finished_at FROM feed_generations WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get();
   const salesRow = db.prepare(`SELECT started_at FROM sales_imports WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get();
   res.json({
-    supplier_cron: SUPPLIER_CRON,
+    supplier_minute: SUPPLIER_MINUTE,
     supplier_stale_hours: SUPPLIER_STALE_HOURS,
     supplier_last_success_at: supplierAt ? new Date(supplierAt).toISOString() : null,
+    supplier_next_at: _supplierNextAt ? _supplierNextAt.toISOString() : null,
     feed_cron: FEED_CRON,
     sync_cron: SYNC_CRON,
     sync_last_success_at: syncRow ? syncRow.started_at : null,

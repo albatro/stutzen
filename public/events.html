@@ -176,8 +176,8 @@ function renderCards(sched) {
       key: 'supplier',
       title: 'Фид поставщика',
       lastAt: sched.supplier_last_success_at,
-      cron: sched.supplier_cron,
-      note: `импорт если > ${sched.supplier_stale_hours} ч`,
+      cron: sched.supplier_minute != null ? `каждый час в :${String(sched.supplier_minute).padStart(2,'0')}` : null,
+      note: `не чаще раза в ${sched.supplier_stale_hours} ч`,
     },
     {
       key: 'feed_gen',

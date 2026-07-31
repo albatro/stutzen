@@ -82,12 +82,10 @@ function updateNextLabels() {
   const s = _scheduleCache;
   if (!s) return;
 
-  // Поставщик: следующий = последний успех + stale_hours
+  // Поставщик: берём supplier_next_at из ответа сервера
   const supplierEl = $('#supplierNext');
   if (supplierEl) {
-    const lastAt = s.supplier_last_success_at ? new Date(s.supplier_last_success_at) : null;
-    const staleMs = (s.supplier_stale_hours || 6) * 3600000;
-    const nextAt = lastAt ? new Date(lastAt.getTime() + staleMs) : null;
+    const nextAt = s.supplier_next_at ? new Date(s.supplier_next_at) : null;
     if (nextAt) {
       const ms = nextAt.getTime() - Date.now();
       supplierEl.innerHTML = `<b>${fmtTimeUntil(ms)}</b> <span class="hint">(${fmtAt(nextAt)})</span>`;
@@ -229,11 +227,11 @@ async function load() {
     renderGenerated(generated.rows ?? []);
     if (schedule) {
       _scheduleCache = schedule;
-      $('#supplierCron').textContent = schedule.supplier_cron ?? `каждые ${schedule.supplier_stale_hours || 6} ч`;
-      const cronHint = describeCron(schedule.supplier_cron);
+      const min = schedule.supplier_minute ?? 55;
+      $('#supplierCron').textContent = `каждый час в :${String(min).padStart(2, '0')}`;
       const staleH = schedule.supplier_stale_hours;
-      const staleHint = staleH ? ` (импорт если предыдущее успешное чтение было больше ${staleH} ч назад)` : '';
-      $('#supplierCronHint').textContent = `${cronHint}${staleHint}`;
+      const staleHint = staleH ? ` (не чаще раза в ${staleH} ч)` : '';
+      $('#supplierCronHint').textContent = staleHint;
       $('#feedCron').textContent = schedule.feed_cron ?? '—';
       $('#feedCronHint').textContent = describeCron(schedule.feed_cron);
       updateNextLabels();
