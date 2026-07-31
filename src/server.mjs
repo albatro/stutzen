@@ -17,6 +17,13 @@ let supplierImportInProgress = false;
 let salesImportInProgress = false;
 let pricesSendInProgress = false;
 
+// Закрываем записи, оставшиеся в статусе 'running' из-за перезапуска контейнера.
+{
+  const abortedAt = new Date().toISOString();
+  db.prepare(`UPDATE supplier_imports SET status='error', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
+  db.prepare(`UPDATE sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
+}
+
 // ---- Я.Маркет таблица ----
 app.get('/api/offers', (req, res) => {
   const search = (req.query.search ?? '').toString().trim();
@@ -1151,8 +1158,9 @@ function triggerSupplierImportIfStale(source) {
     .finally(() => { supplierImportInProgress = false; });
 }
 
-cron.schedule(SUPPLIER_CRON, () => triggerSupplierImportIfStale('cron'));
-console.log(`Cron supplier: ${SUPPLIER_CRON} (импорт если давностью > ${SUPPLIER_STALE_HOURS}ч)`);
+// node-cron ненадёжен в Docker — используем setInterval напрямую.
+setInterval(() => triggerSupplierImportIfStale('interval'), SUPPLIER_STALE_MS).unref();
+console.log(`Supplier interval: каждые ${SUPPLIER_STALE_HOURS}ч (${SUPPLIER_STALE_MS}мс)`);
 
 // При старте: если ни разу не читали или прошло больше SUPPLIER_STALE_HOURS — читаем через 30с.
 setTimeout(() => triggerSupplierImportIfStale('startup'), 30_000).unref();
