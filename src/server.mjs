@@ -1136,7 +1136,7 @@ if (SYNC_CRON) {
 // строк, хотя FEED_CRON '0 * * * *' пахал исправно), поэтому переехали на такой же
 // Импорт фида поставщика: каждый час в :SUPPLIER_MINUTE (дефолт :55).
 // При старте: если фид старше SUPPLIER_STALE_HOURS — читаем через 30с.
-const SUPPLIER_MINUTE = Number(process.env.SUPPLIER_MINUTE ?? 59);
+const SUPPLIER_MINUTE = Number(process.env.SUPPLIER_MINUTE ?? 3);
 const SUPPLIER_STALE_HOURS = Number(process.env.SUPPLIER_STALE_HOURS) || 1;
 const SUPPLIER_STALE_MS = SUPPLIER_STALE_HOURS * 60 * 60 * 1000;
 let _supplierNextAt = null;
