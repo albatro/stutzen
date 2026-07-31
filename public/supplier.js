@@ -175,6 +175,8 @@ const fmtBytes = (n) => {
   return `${(b / (1024 * 1024)).toFixed(1)} МБ`;
 };
 
+let wasImporting = false;
+
 async function pollStats() {
   const r = await fetch('/api/supplier/stats');
   const { stats, lastImport, supplierImportInProgress } = await r.json();
@@ -185,13 +187,34 @@ async function pollStats() {
   $('#stats').textContent = `Поставщик: офферов ${stats.offers}, в наличии ${stats.available}, совпадает с ЯМ ${stats.matched_in_ym}, категорий ${stats.categories}. ${last}`;
   const btn = $('#importBtn');
   if (supplierImportInProgress) {
+    wasImporting = true;
     const progress = lastImport?.file_size_bytes ? `${lastImport?.offers_processed ?? 0}, ${fmtBytes(lastImport.file_size_bytes)}` : `${lastImport?.offers_processed ?? 0}`;
     btn.disabled = true; btn.textContent = `Импорт… (${progress})`;
     setTimeout(pollStats, 2000);
   } else {
+    if (wasImporting) {
+      wasImporting = false;
+      loadCategories();
+      table.setPage(1);
+    }
     btn.disabled = false; btn.textContent = 'Импорт из фида';
   }
 }
+
+$('#zeroStaleBtn').addEventListener('click', async () => {
+  const btn = $('#zeroStaleBtn');
+  if (!confirm('Обнулить count и available для всех товаров, которых не было в последнем успешном импорте фида?')) return;
+  btn.disabled = true; btn.textContent = 'Обнуляю…';
+  try {
+    const r = await fetch('/api/supplier/zero-stale', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) { alert(j.error ?? 'Ошибка'); return; }
+    alert(`Обнулено: ${j.zeroed} товаров (не было в фиде от ${new Date(j.cutoff).toLocaleString('ru-RU')})`);
+    table.setPage(1);
+    pollStats();
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Обнулить отсутствующие'; }
+});
 
 loadCategories();
 pollStats();

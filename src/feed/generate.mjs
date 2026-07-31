@@ -38,6 +38,7 @@ export function collectFeedOffers() {
     INNER JOIN supplier_offers s ON s.offer_id = o.offer_id
     LEFT JOIN commissions c ON c.offer_id = o.offer_id
     WHERE s.purchase_price > 0 AND c.fee_percent IS NOT NULL
+      AND (s.available IS NULL OR s.available != 0)
   `).all();
 
   const result = [];

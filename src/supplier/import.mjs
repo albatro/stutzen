@@ -173,6 +173,17 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       }
     });
 
+    // Офферы, которых не было в этом фиде — обнуляем остатки.
+    // Все виденные офферы имеют updated_at = now; у отсутствующих — более ранний timestamp.
+    let zeroedCount = 0;
+    if (offersTotal > 0) {
+      const res = db.prepare(
+        `UPDATE supplier_offers SET count = 0, available = 0 WHERE updated_at < ?`
+      ).run(now);
+      zeroedCount = res.changes;
+      if (zeroedCount > 0) log(`Обнулено остатков (не в фиде): ${zeroedCount}`);
+    }
+
     updateSupplierImport(importId, {
       finished_at: new Date().toISOString(),
       status: 'success',
@@ -180,7 +191,7 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       categories_processed: categoriesTotal,
       file_size_bytes: bytesRead,
     });
-    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal} размер=${fmtBytes(bytesRead)}`);
+    log(`Готово #${importId}: offers=${offersTotal} categories=${categoriesTotal} размер=${fmtBytes(bytesRead)} обнулено=${zeroedCount}`);
     return { importId, offersTotal, categoriesTotal, bytesRead };
   } catch (e) {
     updateSupplierImport(importId, {

@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — журнал событий</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    .nav { font-size: 13px; margin-bottom: 12px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+    .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; padding: 6px 10px; font-size: 14px; }
+    button:disabled { background: #ddd; cursor: wait; }
+    label { font-size: 13px; color: #555; cursor: pointer; }
+    .hint { color: #999; font-size: 13px; }
+
+    /* Карточки статуса */
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px 14px; }
+    .card .card-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #888; margin-bottom: 6px; }
+    .card .card-age { font-size: 22px; font-weight: 700; line-height: 1.1; }
+    .card .card-meta { font-size: 12px; color: #666; margin-top: 5px; }
+    .card .card-cron { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eef4ff; color: #06c; font-family: ui-monospace, monospace; font-size: 11px; }
+    .card.ok  { border-color: #34a853; background: #f6fef9; }
+    .card.warn{ border-color: #fbbc04; background: #fffdf3; }
+    .card.bad { border-color: #ea4335; background: #fff8f7; }
+    .card.none{ border-color: #ddd; background: #fafafa; }
+
+    /* Таблица */
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid #eee; text-align: left; vertical-align: top; }
+    th { background: #fafafa; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .status { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error   { background: #f8d7da; color: #721c24; }
+    .status.running { background: #fff3cd; color: #856404; }
+    .err { color: #c00; font-family: ui-monospace, monospace; white-space: pre-wrap; font-size: 12px; }
+
+    /* Тип события */
+    .ev { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .ev-ym_sync   { background: #e8f0fe; color: #1a73e8; }
+    .ev-supplier  { background: #e6f4ea; color: #137333; }
+    .ev-feed_gen  { background: #f3e8fd; color: #7b2fb5; }
+    .ev-sales     { background: #fce8e6; color: #c5221f; }
+
+    .empty { color: #999; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Журнал событий</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/supplier.html">Поставщик</a>
+    <a href="/markup.html">Наценка</a>
+    <a href="/price-sync.html">Сверка и отправка цен</a>
+    <a href="/sales.html">Продажи</a>
+    <a href="/cancellations.html">Отмены</a>
+    <a href="/feed-logs.html">Логи фидов</a>
+    <a href="/feed-view.html">Смотреть фид</a>
+    <a href="/supplier-feed.html">Входящий фид</a>
+    <a href="/events.html" class="active">События</a>
+  </div>
+
+  <div class="bar">
+    <button id="refresh">Обновить</button>
+    <label><input type="checkbox" id="autoRefresh" checked> авто (30 с)</label>
+    <span class="hint" id="lastRefreshed"></span>
+  </div>
+
+  <div class="cards" id="cards"></div>
+  <div id="timeline"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fmtDate = (s) => s ? new Date(s).toLocaleString('ru-RU') : '—';
+const fmtNum  = (v) => v == null ? '' : Number(v).toLocaleString('ru-RU');
+const escHtml = (s) => (s ?? '').toString()
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const fmtDur = (ms) => {
+  if (ms == null) return '';
+  if (ms < 1000) return `${ms} мс`;
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)} с`;
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${m} мин ${s} с`;
+};
+
+const diffMs = (a, b) => (a && b) ? (new Date(b) - new Date(a)) : null;
+
+function fmtAge(isoStr) {
+  if (!isoStr) return null;
+  const ms = Date.now() - new Date(isoStr).getTime();
+  if (ms < 0) return '< 1 мин';
+  const min = Math.floor(ms / 60000);
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.floor(ms / 3600000);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.floor(ms / 86400000);
+  return `${d} дн назад`;
+}
+
+function ageClass(isoStr, warnH = 12, badH = 48) {
+  if (!isoStr) return 'bad';
+  const h = (Date.now() - new Date(isoStr).getTime()) / 3600000;
+  if (h < warnH) return 'ok';
+  if (h < badH)  return 'warn';
+  return 'bad';
+}
+
+function describeCron(expr) {
+  if (!expr) return '';
+  const p = expr.trim().split(/\s+/);
+  if (p.length !== 5) return '';
+  const [min, hour, dom, mon, dow] = p;
+  if (dom !== '*' || mon !== '*' || dow !== '*') return '';
+  if (min === '0' && hour === '*') return 'каждый час';
+  const m = /^\*\/(\d+)$/.exec(hour);
+  if (min === '0' && m) return `каждые ${m[1]} ч`;
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour))
+    return `ежедневно в ${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+  return expr;
+}
+
+const TYPE_LABELS = {
+  ym_sync:  'ЯМ синк',
+  supplier: 'Фид поставщика',
+  feed_gen: 'Генерация фида',
+  sales:    'Импорт продаж',
+};
+
+function resultText(row) {
+  const { event_type: t, n1, n2, n3 } = row;
+  if (t === 'ym_sync') {
+    const parts = [];
+    if (n1 != null) parts.push(`${fmtNum(n1)} офферов`);
+    if (n2) parts.push(`${fmtNum(n2)} ошибок`);
+    return parts.join(', ');
+  }
+  if (t === 'supplier') {
+    const parts = [];
+    if (n1 != null) parts.push(`${fmtNum(n1)} офферов`);
+    if (n2 != null) parts.push(`${fmtNum(n2)} кат.`);
+    return parts.join(', ');
+  }
+  if (t === 'feed_gen') {
+    const parts = [];
+    if (n1 != null) parts.push(`${fmtNum(n1)} в фиде`);
+    if (n2 != null || n3 != null) parts.push(`пропущено: ${fmtNum((n2 ?? 0) + (n3 ?? 0))}`);
+    return parts.join(', ');
+  }
+  if (t === 'sales') {
+    const parts = [];
+    if (n1 != null) parts.push(`${fmtNum(n1)} заказов`);
+    if (n2 != null) parts.push(`${fmtNum(n2)} позиций`);
+    return parts.join(', ');
+  }
+  return '';
+}
+
+const statusBadge = (s) =>
+  `<span class="status ${s}">${s === 'success' ? 'успех' : s === 'error' ? 'ошибка' : 'идёт'}</span>`;
+
+function renderCards(sched) {
+  const items = [
+    {
+      key: 'ym_sync',
+      title: 'Синхронизация ЯМ',
+      lastAt: sched.sync_last_success_at,
+      cron: sched.sync_cron,
+      note: sched.sync_cron ? null : 'Авто не настроено (SYNC_CRON не задан)',
+    },
+    {
+      key: 'supplier',
+      title: 'Фид поставщика',
+      lastAt: sched.supplier_last_success_at,
+      cron: sched.supplier_cron,
+      note: `импорт если > ${sched.supplier_stale_hours} ч`,
+    },
+    {
+      key: 'feed_gen',
+      title: 'Генерация фида',
+      lastAt: sched.feed_last_success_at,
+      cron: sched.feed_cron,
+    },
+    {
+      key: 'sales',
+      title: 'Импорт продаж',
+      lastAt: sched.sales_last_success_at,
+      cron: null,
+      note: 'Только вручную',
+    },
+  ];
+
+  const html = items.map(({ key, title, lastAt, cron, note }) => {
+    const age = fmtAge(lastAt);
+    const cls = key === 'sales' ? (age ? 'none' : 'none') : ageClass(lastAt);
+    const cronStr = cron ? `<span class="card-cron">${escHtml(cron)}</span> ${describeCron(cron)}` : '';
+    return `
+      <div class="card ${cls}">
+        <div class="card-title">${escHtml(title)}</div>
+        <div class="card-age">${age ?? 'Никогда'}</div>
+        <div class="card-meta">
+          ${lastAt ? `<div>${fmtDate(lastAt)}</div>` : ''}
+          ${cronStr ? `<div style="margin-top:4px">${cronStr}</div>` : ''}
+          ${note ? `<div style="margin-top:2px;color:#888">${escHtml(note)}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  $('#cards').innerHTML = html;
+}
+
+function renderTimeline(rows) {
+  if (!rows.length) {
+    $('#timeline').innerHTML = '<div class="empty">Событий нет</div>';
+    return;
+  }
+  const html = `
+    <table>
+      <thead>
+        <tr>
+          <th>Время начала</th>
+          <th>Тип</th>
+          <th>Статус</th>
+          <th>Длительность</th>
+          <th>Результат</th>
+          <th>Ошибка</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          const dur = fmtDur(diffMs(r.started_at, r.finished_at));
+          return `
+            <tr>
+              <td style="white-space:nowrap">${fmtDate(r.started_at)}</td>
+              <td><span class="ev ev-${r.event_type}">${TYPE_LABELS[r.event_type] ?? r.event_type}</span></td>
+              <td>${statusBadge(r.status)}</td>
+              <td style="white-space:nowrap">${dur}</td>
+              <td>${escHtml(resultText(r))}</td>
+              <td class="err">${escHtml(r.error_message)}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  $('#timeline').innerHTML = html;
+}
+
+async function load() {
+  const btn = $('#refresh');
+  btn.disabled = true;
+  try {
+    const [eventsResp, schedResp] = await Promise.all([
+      fetch('/api/events?limit=300').then(r => r.json()),
+      fetch('/api/feed-logs/schedule').then(r => r.json()),
+    ]);
+    renderCards(schedResp);
+    renderTimeline(eventsResp.rows ?? []);
+    $('#lastRefreshed').textContent = `Обновлено в ${new Date().toLocaleTimeString('ru-RU')}`;
+  } catch (e) {
+    $('#lastRefreshed').textContent = `Ошибка: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('#refresh').addEventListener('click', load);
+
+let timer = null;
+function setupAutoRefresh() {
+  clearInterval(timer);
+  if ($('#autoRefresh').checked) timer = setInterval(load, 30000);
+}
+$('#autoRefresh').addEventListener('change', setupAutoRefresh);
+
+load();
+setupAutoRefresh();
+</script>
+</body>
+</html>

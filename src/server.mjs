@@ -244,6 +244,19 @@ app.post('/api/supplier/import', async (req, res) => {
   finally { supplierImportInProgress = false; }
 });
 
+// Обнулить остатки товаров, которых не было в последнем успешном импорте фида.
+app.post('/api/supplier/zero-stale', (req, res) => {
+  const lastImport = db.prepare(
+    `SELECT started_at FROM supplier_imports WHERE status = 'success' ORDER BY id DESC LIMIT 1`
+  ).get();
+  if (!lastImport) return res.status(409).json({ error: 'Нет успешных импортов' });
+  const result = db.prepare(
+    `UPDATE supplier_offers SET count = 0, available = 0 WHERE updated_at < ?`
+  ).run(lastImport.started_at);
+  console.log(`[supplier] zero-stale: обнулено ${result.changes} записей (updated_at < ${lastImport.started_at})`);
+  res.json({ ok: true, zeroed: result.changes, cutoff: lastImport.started_at });
+});
+
 // ---- Правила наценки ----
 app.get('/api/markup-rules', (req, res) => {
   const rules = db.prepare(`
@@ -572,6 +585,30 @@ app.get('/api/feed-logs/supplier', (req, res) => {
 app.get('/api/feed-logs/generated', (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000);
   const rows = db.prepare(`SELECT * FROM feed_generations ORDER BY id DESC LIMIT ?`).all(limit);
+  res.json({ rows });
+});
+
+app.get('/api/events', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const rows = db.prepare(`
+    SELECT 'ym_sync' AS event_type, id, started_at, finished_at, status,
+      offers_processed AS n1, errors_count AS n2, NULL AS n3, error_message
+    FROM sync_runs
+    UNION ALL
+    SELECT 'supplier' AS event_type, id, started_at, finished_at, status,
+      offers_processed AS n1, categories_processed AS n2, file_size_bytes AS n3, error_message
+    FROM supplier_imports
+    UNION ALL
+    SELECT 'feed_gen' AS event_type, id, started_at, finished_at, status,
+      count AS n1, skipped_below_purchase AS n2, skipped_no_rule AS n3, error_message
+    FROM feed_generations
+    UNION ALL
+    SELECT 'sales' AS event_type, id, started_at, finished_at, status,
+      orders_processed AS n1, items_processed AS n2, NULL AS n3, error_message
+    FROM sales_imports
+    ORDER BY started_at DESC
+    LIMIT ?
+  `).all(limit);
   res.json({ rows });
 });
 
@@ -1126,13 +1163,19 @@ initFeedCache().catch(e => console.error('feed init failed:', e));
 scheduleFeedRegeneration(FEED_CRON);
 
 app.get('/api/feed-logs/schedule', (_req, res) => {
-  const lastAt = lastSupplierImportSuccessAt();
+  const supplierAt = lastSupplierImportSuccessAt();
+  const syncRow = db.prepare(`SELECT started_at FROM sync_runs WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get();
+  const feedRow = db.prepare(`SELECT finished_at FROM feed_generations WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get();
+  const salesRow = db.prepare(`SELECT started_at FROM sales_imports WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get();
   res.json({
     supplier_cron: SUPPLIER_CRON,
     supplier_stale_hours: SUPPLIER_STALE_HOURS,
-    supplier_last_success_at: lastAt ? new Date(lastAt).toISOString() : null,
+    supplier_last_success_at: supplierAt ? new Date(supplierAt).toISOString() : null,
     feed_cron: FEED_CRON,
     sync_cron: SYNC_CRON,
+    sync_last_success_at: syncRow ? syncRow.started_at : null,
+    feed_last_success_at: feedRow ? feedRow.finished_at : null,
+    sales_last_success_at: salesRow ? salesRow.started_at : null,
     supplier_feed_url: process.env.SUPPLIER_FEED_URL ?? null,
     generated_feed_url: '/api/ym/price-feed.xml',
   });
