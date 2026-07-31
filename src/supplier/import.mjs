@@ -56,6 +56,8 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
     categoriesBuf = [];
   };
 
+  const now = new Date().toISOString();
+
   try {
     await new Promise(async (resolve, reject) => {
       const parser = sax.createStream(true, { lowercase: false, trim: false });
@@ -63,7 +65,6 @@ export async function runSupplierImport({ url, batchSize = 500 } = {}) {
       let cur = null;          // текущий <offer> объект
       let curCategory = null;  // текущая <category>
       let lastTag = null;      // имя последнего открытого тега внутри offer
-      const now = new Date().toISOString();
 
       parser.on('opentag', (node) => {
         if (node.name === 'offer') {
