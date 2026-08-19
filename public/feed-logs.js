@@ -214,8 +214,10 @@ function renderDash(supplierRows, genRows, schedule) {
         <span id="dhAge">—</span>
         <span id="dhCountdown" style="color:#bbb"></span>
         <button onclick="load()" title="Обновить сейчас">↻</button>
+        <button id="dhNavToggle" onclick="toggleNav()" title="Скрыть/показать меню">☰</button>
       </span>
     </div>
+    <div class="dh-title">ЯМ STUTZEN</div>
     <div class="dh-cols">
       <div>
         <div class="dh-sec-head">Поставщик (Stutzen)</div>
@@ -238,6 +240,7 @@ function renderDash(supplierRows, genRows, schedule) {
     </div>`;
 
   updateDashAge();
+  applyNavState(localStorage.getItem('navHidden') === '1');
 }
 
 // ── EXISTING SCHEDULE LABELS ──────────────────────────────────
@@ -464,8 +467,26 @@ $('#regen').addEventListener('click', async () => {
   }
 });
 
+// ── NAV TOGGLE ────────────────────────────────────────────────
+function applyNavState(hidden) {
+  document.querySelector('h1').style.display = hidden ? 'none' : '';
+  document.querySelector('.nav').style.display = hidden ? 'none' : '';
+  const btn = $('#dhNavToggle');
+  if (btn) {
+    btn.style.opacity = hidden ? '0.35' : '1';
+    btn.title = hidden ? 'Показать меню' : 'Скрыть меню';
+  }
+}
+
+function toggleNav() {
+  const hidden = localStorage.getItem('navHidden') !== '1';
+  localStorage.setItem('navHidden', hidden ? '1' : '0');
+  applyNavState(hidden);
+}
+
 // ── INIT ──────────────────────────────────────────────────────
 load();
 pollFeedStatus();
 setInterval(updateDashAge, 1_000);
 setInterval(load, AUTO_REFRESH_MS);
+applyNavState(localStorage.getItem('navHidden') === '1');
