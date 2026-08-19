@@ -40,7 +40,6 @@ function fmtAt(date) {
   return sameDay ? `в ${time}` : `${date.toLocaleDateString('ru-RU')} в ${time}`;
 }
 
-// Следующее срабатывание по cron-выражению (поддерживаем наши стандартные паттерны).
 function nextCronAt(expr) {
   if (!expr) return null;
   const parts = expr.trim().split(/\s+/);
@@ -50,13 +49,11 @@ function nextCronAt(expr) {
   const now = new Date();
   const next = new Date(now);
   next.setSeconds(0, 0);
-  // каждый час в :MM
   if (hour === '*' && /^\d+$/.test(min)) {
     next.setMinutes(Number(min));
     if (next <= now) next.setHours(next.getHours() + 1);
     return next;
   }
-  // каждые N часов в :00
   const mH = /^\*\/(\d+)$/.exec(hour);
   if (min === '0' && mH) {
     const n = Number(mH[1]);
@@ -67,7 +64,6 @@ function nextCronAt(expr) {
     next.setHours(h);
     return next;
   }
-  // ежедневно в H:M
   if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
     next.setHours(Number(hour), Number(min));
     if (next <= now) next.setDate(next.getDate() + 1);
@@ -76,13 +72,181 @@ function nextCronAt(expr) {
   return null;
 }
 
+function describeCron(expr) {
+  if (!expr) return '';
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return '';
+  const [min, hour, dom, mon, dow] = parts;
+  if (dom !== '*' || mon !== '*' || dow !== '*') return '';
+  if (min === '0' && hour === '*') return '— каждый час, в :00';
+  const m = /^\*\/(\d+)$/.exec(hour);
+  if (min === '0' && m) return `— каждые ${m[1]} часов, в :00`;
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
+    return `— ежедневно в ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  return '';
+}
+
+// ── AUTO-REFRESH ──────────────────────────────────────────────
+const AUTO_REFRESH_MS = 60_000;
+let lastLoadedAt = null;
+
+function updateDashAge() {
+  if (!lastLoadedAt) return;
+  const sec = Math.round((Date.now() - lastLoadedAt) / 1000);
+  const ageEl = $('#dhAge');
+  if (ageEl) ageEl.textContent = sec < 5 ? 'только что' : `${sec} с назад`;
+  const cdEl = $('#dhCountdown');
+  if (cdEl) {
+    const rem = Math.max(0, Math.round((AUTO_REFRESH_MS - (Date.now() - lastLoadedAt)) / 1000));
+    cdEl.textContent = rem > 0 ? `авто через ${rem}с` : '…';
+  }
+  // also refresh "next run" labels live
+  updateNextLabels();
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+let _dashData = null; // { supplierRows, genRows, schedule }
+
+function miniTime(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString())
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' ' +
+    d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function miniIco(s) {
+  if (s === 'success') return '<span class="ico-ok">✓</span>';
+  if (s === 'error')   return '<span class="ico-err">✗</span>';
+  if (s === 'running') return '<span class="ico-run">⟳</span>';
+  return '—';
+}
+
+function overallClass(supplierRows, genRows) {
+  const sLast = supplierRows[0];
+  const gLast = genRows[0];
+  if (!sLast && !gLast) return 's-warn';
+  const all = [sLast?.status, gLast?.status].filter(Boolean);
+  if (all.some(s => s === 'error'))   return 's-err';
+  if (all.some(s => s === 'running')) return 's-run';
+
+  // staleness: supplier should have run in last 2h
+  if (sLast?.status === 'success' && sLast.finished_at) {
+    const h = (Date.now() - new Date(sLast.finished_at)) / 3600000;
+    if (h > 2) return 's-warn';
+  }
+  if (all.every(s => s === 'success')) return 's-ok';
+  return 's-warn';
+}
+
+function overallLabel(cls) {
+  return {
+    's-ok':   'Всё в порядке',
+    's-err':  'Ошибка — нужно проверить',
+    's-warn': 'Внимание / нет данных',
+    's-run':  'Выполняется…',
+  }[cls] ?? '—';
+}
+
+function buildSuppRows(rows) {
+  if (!rows.length) return '<tr><td colspan="4" style="color:#aaa">нет данных</td></tr>';
+  return rows.slice(0, 4).map(r => {
+    const isErr = r.status === 'error';
+    const errText = isErr && r.error_message
+      ? `<td class="etxt">${escapeHtml(r.error_message.slice(0, 70))}</td>` : '<td></td>';
+    return `<tr${isErr ? ' class="erow"' : ''}>
+      <td>${miniTime(r.finished_at ?? r.started_at)}</td>
+      <td>${miniIco(r.status)}</td>
+      <td class="r">${fmtNum(r.offers_processed) || '—'}</td>
+      ${errText}
+    </tr>`;
+  }).join('');
+}
+
+function buildGenRows(rows) {
+  if (!rows.length) return '<tr><td colspan="5" style="color:#aaa">нет данных</td></tr>';
+  return rows.slice(0, 4).map(r => {
+    const isErr = r.status === 'error';
+    const errText = isErr && r.error_message
+      ? `<td class="etxt">${escapeHtml(r.error_message.slice(0, 60))}</td>` : '<td></td>';
+    return `<tr${isErr ? ' class="erow"' : ''}>
+      <td>${miniTime(r.finished_at ?? r.started_at)}</td>
+      <td>${miniIco(r.status)}</td>
+      <td class="r">${fmtNum(r.count) || '—'}</td>
+      <td class="r">${fmtNum(r.skipped_below_purchase) || ''}</td>
+      <td class="r">${fmtNum(r.skipped_no_rule) || ''}</td>
+      ${errText}
+    </tr>`;
+  }).join('');
+}
+
+function renderDash(supplierRows, genRows, schedule) {
+  _dashData = { supplierRows, genRows, schedule };
+
+  const cls = overallClass(supplierRows, genRows);
+  const dash = $('#dash');
+  dash.className = cls;
+
+  const sLast = supplierRows[0];
+  const gLast = genRows[0];
+
+  const suppSummary = sLast
+    ? `${miniIco(sLast.status)} ${miniTime(sLast.finished_at ?? sLast.started_at)} · <b>${fmtNum(sLast.offers_processed) || '—'}</b> офф.`
+    : '— нет данных';
+  const genSummary = gLast
+    ? `${miniIco(gLast.status)} ${miniTime(gLast.finished_at ?? gLast.started_at)} · <b>${fmtNum(gLast.count) || '—'}</b> офф.`
+    : '— нет данных';
+
+  const suppNextAt = schedule?.supplier_next_at ? new Date(schedule.supplier_next_at) : null;
+  const suppNextTxt = suppNextAt ? fmtTimeUntil(suppNextAt - Date.now()) : '—';
+
+  const feedNextAt = nextCronAt(schedule?.feed_cron);
+  const feedNextTxt = feedNextAt ? fmtTimeUntil(feedNextAt - Date.now()) : '—';
+
+  dash.innerHTML = `
+    <div class="dh-top">
+      <div class="dh-dot ${cls}"></div>
+      <span class="dh-lbl ${cls}">${overallLabel(cls)}</span>
+      <span class="dh-meta">
+        <span id="dhAge">—</span>
+        <span id="dhCountdown" style="color:#bbb"></span>
+        <button onclick="load()" title="Обновить сейчас">↻</button>
+      </span>
+    </div>
+    <div class="dh-cols">
+      <div>
+        <div class="dh-sec-head">Поставщик (Stutzen)</div>
+        <div class="dh-summary">${suppSummary}</div>
+        <div class="dh-nxt">Следующий: ${suppNextTxt}</div>
+        <table class="dh-tbl">
+          <thead><tr><th>Время</th><th>Ст</th><th class="r">Офф.</th><th></th></tr></thead>
+          <tbody>${buildSuppRows(supplierRows)}</tbody>
+        </table>
+      </div>
+      <div>
+        <div class="dh-sec-head">Наш YML-фид</div>
+        <div class="dh-summary">${genSummary}</div>
+        <div class="dh-nxt">Следующая: ${feedNextTxt}</div>
+        <table class="dh-tbl">
+          <thead><tr><th>Время</th><th>Ст</th><th class="r">Офф.</th><th class="r" title="Ниже закупки">Зак.</th><th class="r" title="Нет правила">Пр.</th><th></th></tr></thead>
+          <tbody>${buildGenRows(genRows)}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  updateDashAge();
+}
+
+// ── EXISTING SCHEDULE LABELS ──────────────────────────────────
 let _scheduleCache = null;
 
 function updateNextLabels() {
   const s = _scheduleCache;
   if (!s) return;
 
-  // Поставщик: берём supplier_next_at из ответа сервера
   const supplierEl = $('#supplierNext');
   if (supplierEl) {
     const nextAt = s.supplier_next_at ? new Date(s.supplier_next_at) : null;
@@ -94,7 +258,6 @@ function updateNextLabels() {
     }
   }
 
-  // Фид: следующее по cron
   const feedEl = $('#feedNext');
   if (feedEl) {
     const nextAt = nextCronAt(s.feed_cron);
@@ -105,27 +268,20 @@ function updateNextLabels() {
       feedEl.textContent = '—';
     }
   }
-}
 
-// Человекопонятная расшифровка простых крон-выражений (для наших дефолтов).
-function describeCron(expr) {
-  if (!expr) return '';
-  const parts = expr.trim().split(/\s+/);
-  if (parts.length !== 5) return '';
-  const [min, hour, dom, mon, dow] = parts;
-  if (dom !== '*' || mon !== '*' || dow !== '*') return '';
-  // '0 * * * *' → каждый час в :00
-  if (min === '0' && hour === '*') return '— каждый час, в :00';
-  // '0 */N * * *' → каждые N часов
-  const m = /^\*\/(\d+)$/.exec(hour);
-  if (min === '0' && m) return `— каждые ${m[1]} часов, в :00`;
-  // '0 H * * *' → раз в день
-  if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
-    return `— ежедневно в ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  // also update dashboard "next" labels live if dashboard is rendered
+  if (_dashData) {
+    const suppNextAt = s.supplier_next_at ? new Date(s.supplier_next_at) : null;
+    const suppEl = document.querySelector('.dh-cols > div:first-child .dh-nxt');
+    if (suppEl && suppNextAt) suppEl.textContent = `Следующий: ${fmtTimeUntil(suppNextAt - Date.now())}`;
+
+    const feedNextAt = nextCronAt(s.feed_cron);
+    const feedEl2 = document.querySelector('.dh-cols > div:last-child .dh-nxt');
+    if (feedEl2 && feedNextAt) feedEl2.textContent = `Следующая: ${fmtTimeUntil(feedNextAt - Date.now())}`;
   }
-  return '';
 }
 
+// ── TABLE RENDERERS ───────────────────────────────────────────
 function renderSupplier(rows) {
   const meta = $('#supplierMeta');
   const last = rows.find(r => r.status === 'success');
@@ -214,24 +370,31 @@ function renderGenerated(rows) {
   $('#genTable').innerHTML = html;
 }
 
+// ── LOAD ──────────────────────────────────────────────────────
 async function load() {
   const btn = $('#refresh');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
     const [supplier, generated, schedule] = await Promise.all([
       fetch('/api/feed-logs/supplier').then(r => r.json()),
       fetch('/api/feed-logs/generated').then(r => r.json()),
       fetch('/api/feed-logs/schedule').then(r => r.json()),
     ]);
-    renderSupplier(supplier.rows ?? []);
-    renderGenerated(generated.rows ?? []);
+
+    const sRows = supplier.rows ?? [];
+    const gRows = generated.rows ?? [];
+
+    lastLoadedAt = Date.now();
+    renderDash(sRows, gRows, schedule);
+    renderSupplier(sRows);
+    renderGenerated(gRows);
+
     if (schedule) {
       _scheduleCache = schedule;
       const min = schedule.supplier_minute ?? 55;
       $('#supplierCron').textContent = `каждый час в :${String(min).padStart(2, '0')}`;
       const staleH = schedule.supplier_stale_hours;
-      const staleHint = staleH ? ` (не чаще раза в ${staleH} ч)` : '';
-      $('#supplierCronHint').textContent = staleHint;
+      $('#supplierCronHint').textContent = staleH ? ` (не чаще раза в ${staleH} ч)` : '';
       $('#feedCron').textContent = schedule.feed_cron ?? '—';
       $('#feedCronHint').textContent = describeCron(schedule.feed_cron);
       updateNextLabels();
@@ -250,12 +413,13 @@ async function load() {
       }
     }
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
 $('#refresh').addEventListener('click', load);
 
+// ── REGEN POLL ────────────────────────────────────────────────
 let pollTimer = null;
 async function pollFeedStatus() {
   try {
@@ -300,6 +464,8 @@ $('#regen').addEventListener('click', async () => {
   }
 });
 
+// ── INIT ──────────────────────────────────────────────────────
 load();
 pollFeedStatus();
-setInterval(updateNextLabels, 60_000);
+setInterval(updateDashAge, 1_000);
+setInterval(load, AUTO_REFRESH_MS);
