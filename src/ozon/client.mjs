@@ -67,7 +67,7 @@ export async function ozonFetch(method, path, body, attempt = 1) {
 }
 
 export const ozon = {
-  // Список всех продуктов (только product_id + offer_id), пагинация через last_id.
+  // /v3/product/list — пагинация через last_id, ответ в result.items
   async *iterProducts({ pageSize = 1000 } = {}) {
     let lastId = '';
     while (true) {
@@ -84,47 +84,46 @@ export const ozon = {
     }
   },
 
-  // Детальная информация: имя, категория, фото, штрих-код (до 1000 за раз).
+  // /v3/product/info/list — ответ в data.items (без result-обёртки)
   async getProductsInfo(productIds) {
     if (productIds.length === 0) return [];
     const data = await ozonFetch('POST', '/v3/product/info/list', {
       product_id: productIds,
     });
-    return data?.result?.items ?? [];
+    return data?.items ?? [];
   },
 
-  // Цены (пагинированный).
+  // /v5/product/info/prices — ответ в data.items, пагинация через cursor
   async *iterPrices({ pageSize = 1000 } = {}) {
-    let lastId = '';
+    let cursor = '';
     while (true) {
       const data = await ozonFetch('POST', '/v5/product/info/prices', {
         filter: { visibility: 'ALL' },
-        last_id: lastId,
+        last_id: cursor,
         limit: pageSize,
       });
-      const items = data?.result?.items ?? [];
+      const items = data?.items ?? [];
       if (items.length === 0) break;
       yield items;
-      lastId = data?.result?.last_id ?? '';
-      if (!lastId || items.length < pageSize) break;
+      cursor = data?.cursor ?? data?.last_id ?? '';
+      if (!cursor || items.length < pageSize) break;
     }
   },
 
-  // Остатки по складам (пагинированный).
+  // /v4/product/info/stocks — ответ в data.items, пагинация через cursor
   async *iterStocks({ pageSize = 1000 } = {}) {
-    let lastId = '';
+    let cursor = '';
     while (true) {
       const data = await ozonFetch('POST', '/v4/product/info/stocks', {
         filter: { visibility: 'ALL' },
-        last_id: lastId,
+        last_id: cursor,
         limit: pageSize,
       });
-      const items = data?.result?.items ?? [];
+      const items = data?.items ?? [];
       if (items.length === 0) break;
       yield items;
-      lastId = data?.result?.last_id ?? '';
-      if (!lastId || items.length < pageSize) break;
+      cursor = data?.cursor ?? data?.last_id ?? '';
+      if (!cursor || items.length < pageSize) break;
     }
   },
-
 };
