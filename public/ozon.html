@@ -12,6 +12,27 @@
     .bar input[type=text] { width: 260px; }
     button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; }
     button:disabled { background: #ddd; cursor: wait; }
+    #progress {
+      display: none;
+      background: #f0f7ff;
+      border: 1px solid #b3d1f5;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    #progress.visible { display: block; }
+    #progress .pr-title { font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    #progress .pr-phases { display: flex; gap: 24px; flex-wrap: wrap; }
+    #progress .pr-phase { display: flex; flex-direction: column; gap: 2px; }
+    #progress .pr-phase-name { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: .04em; }
+    #progress .pr-phase-val { font-size: 18px; font-weight: 700; color: #1a73e8; }
+    #progress .pr-phase-val.done { color: #34a853; }
+    #progress .pr-phase-val.idle { color: #bbb; font-weight: 400; font-size: 14px; }
+    #progress .pr-err { color: #c00; margin-top: 6px; font-size: 12px; }
+    #progress .pr-elapsed { font-size: 12px; color: #888; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { display: inline-block; animation: spin 1s linear infinite; }
     .stats { font-size: 13px; color: #555; }
     #table { height: calc(100vh - 130px); }
     .thumb { width: 40px; height: 40px; object-fit: contain; }
@@ -112,6 +133,17 @@
       <div class="gear-panel"></div>
     </span>
     <span id="stats" class="stats"></span>
+  </div>
+  <div id="progress">
+    <div class="pr-title"><span class="spinner">⟳</span> <span id="pr-label">Синхронизация…</span> <span class="pr-elapsed" id="pr-elapsed"></span></div>
+    <div class="pr-phases">
+      <div class="pr-phase"><span class="pr-phase-name">Товары</span><span class="pr-phase-val" id="pr-products">—</span></div>
+      <div class="pr-phase"><span class="pr-phase-name">Цены</span><span class="pr-phase-val" id="pr-prices">—</span></div>
+      <div class="pr-phase"><span class="pr-phase-name">Остатки</span><span class="pr-phase-val" id="pr-stocks">—</span></div>
+      <div class="pr-phase"><span class="pr-phase-name">Комиссии</span><span class="pr-phase-val" id="pr-commissions">—</span></div>
+      <div class="pr-phase"><span class="pr-phase-name">Ошибок</span><span class="pr-phase-val" id="pr-errors">0</span></div>
+    </div>
+    <div class="pr-err" id="pr-errmsg"></div>
   </div>
   <div id="table"></div>
   <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>

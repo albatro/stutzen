@@ -146,17 +146,18 @@ async function loadCategories() {
 // ---- Статистика ----
 async function loadStats() {
   const data = await fetch('/api/ozon/stats').then(r => r.json());
-  const sync = data.lastSync;
-  let syncInfo = '';
-  if (sync) {
-    const at = new Date(sync.started_at).toLocaleString('ru-RU');
-    syncInfo = ` · Синхронизация: ${sync.status} (${at})`;
-  }
+
   $('#stats').textContent =
-    `Товаров: ${data.products} · Цен: ${data.prices} · Остаток: ${data.stockTotal} · Комиссий: ${data.commissions}${syncInfo}`;
+    `Товаров: ${data.products} · Цен: ${data.prices} · Остаток: ${data.stockTotal} · Комиссий: ${data.commissions}`;
 
   const syncBtn = $('#sync');
   if (syncBtn) syncBtn.disabled = data.syncInProgress;
+
+  updateProgress(data);
+
+  // Быстрый поллинг пока идёт синхронизация, медленный после
+  const running = data.syncInProgress || data.lastSync?.status === 'running';
+  startPolling(running);
 }
 
 // ---- Кнопки ----
@@ -175,14 +176,93 @@ $('#sync')?.addEventListener('click', async () => {
     const r = await fetch('/api/ozon/sync', { method: 'POST' });
     const data = await r.json();
     if (!r.ok) { alert(data.error ?? 'Ошибка'); btn.disabled = false; return; }
-    alert(data.message ?? 'Запущено');
-    setTimeout(loadStats, 3000);
+    startPolling(true);
+    loadStats();
   } catch (e) {
     alert('Ошибка: ' + e.message);
     btn.disabled = false;
   }
 });
 
+// ---- Прогресс синхронизации ----
+const fmtNum = (v) => v == null ? '—' : Number(v).toLocaleString('ru-RU');
+
+function updateProgress(data) {
+  const box = document.getElementById('progress');
+  const sync = data.lastSync;
+  const running = data.syncInProgress || sync?.status === 'running';
+
+  if (!sync) { box.classList.remove('visible'); return; }
+
+  const finished = sync.status === 'success' || sync.status === 'partial' || sync.status === 'error' || sync.status === 'failed';
+
+  // Показываем блок если синхронизация активна или завершилась только что (есть данные)
+  if (!running && !finished) { box.classList.remove('visible'); return; }
+  box.classList.add('visible');
+
+  // Заголовок
+  const label = document.getElementById('pr-label');
+  if (running) {
+    label.textContent = 'Синхронизация…';
+    document.querySelector('#progress .spinner').style.display = '';
+  } else {
+    document.querySelector('#progress .spinner').style.display = 'none';
+    if (sync.status === 'success') label.textContent = '✓ Синхронизация завершена';
+    else if (sync.status === 'partial') label.textContent = '⚠ Завершено с ошибками';
+    else label.textContent = '✗ Ошибка синхронизации';
+  }
+
+  // Время
+  if (sync.started_at) {
+    const start = new Date(sync.started_at);
+    const end = sync.finished_at ? new Date(sync.finished_at) : new Date();
+    const sec = Math.round((end - start) / 1000);
+    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+    const ss = String(sec % 60).padStart(2, '0');
+    document.getElementById('pr-elapsed').textContent = `${mm}:${ss}`;
+  }
+
+  // Фазы — определяем что уже выполнено
+  const pp = sync.products_processed;
+  const pr = sync.prices_processed;
+  const ps = sync.stocks_processed;
+  const pc = sync.commissions_processed;
+
+  // Определяем текущую фазу для подсветки
+  let phase = 0; // 0=products 1=prices 2=stocks 3=commissions 4=done
+  if (finished) phase = 4;
+  else if (pc > 0) phase = 3;
+  else if (ps > 0) phase = 2;
+  else if (pr > 0) phase = 1;
+
+  function setPhase(id, val, phaseIdx) {
+    const el = document.getElementById(id);
+    el.textContent = val == null || val === 0 && phaseIdx > phase ? '—' : fmtNum(val);
+    el.className = 'pr-phase-val';
+    if (phaseIdx < phase || (phaseIdx === phase && finished)) el.classList.add('done');
+    else if (phaseIdx > phase) el.classList.add('idle');
+  }
+
+  setPhase('pr-products',    pp, 0);
+  setPhase('pr-prices',      pr, 1);
+  setPhase('pr-stocks',      ps, 2);
+  setPhase('pr-commissions', pc, 3);
+
+  const errEl = document.getElementById('pr-errors');
+  errEl.textContent = fmtNum(sync.errors_count ?? 0);
+  errEl.className = 'pr-phase-val' + (sync.errors_count > 0 ? '' : ' done');
+
+  const errmsg = document.getElementById('pr-errmsg');
+  errmsg.textContent = sync.error_message ?? sync.details ?? '';
+}
+
+let _statsInterval = null;
+
+function startPolling(fast) {
+  if (_statsInterval) clearInterval(_statsInterval);
+  _statsInterval = setInterval(loadStats, fast ? 2000 : 10000);
+}
+
 loadCategories();
 loadStats();
-setInterval(loadStats, 10000);
+startPolling(false);
