@@ -1217,6 +1217,20 @@ app.get('/api/ozon/products', (req, res) => {
   res.json({ total, rows });
 });
 
+app.get('/api/ozon/debug', async (req, res) => {
+  try {
+    const { ozonFetch } = await import('./ozon/client.mjs');
+    const data = await ozonFetch('POST', '/v3/product/list', {
+      filter: { visibility: 'ALL' },
+      last_id: '',
+      limit: 5,
+    });
+    res.json({ ok: true, raw: data });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/ozon/sync', (req, res) => {
   if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
   ozonSyncInProgress = true;
