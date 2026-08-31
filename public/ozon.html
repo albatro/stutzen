@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Stutzen — товары Я.Маркет</title>
+  <title>Stutzen — товары Ozon</title>
   <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_simple.min.css" rel="stylesheet">
   <style>
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
@@ -88,9 +88,9 @@
   </style>
 </head>
 <body>
-  <h1>Товары Я.Маркет</h1>
+  <h1>Товары Ozon</h1>
   <div style="font-size:13px;margin-bottom:8px;">
-    <a href="/" style="color:#222;font-weight:bold;text-decoration:underline;margin-right:12px;">Я.Маркет</a>
+    <a href="/" style="color:#06c;text-decoration:none;margin-right:12px;">Я.Маркет</a>
     <a href="/supplier.html" style="color:#06c;text-decoration:none;margin-right:12px;">Поставщик</a>
     <a href="/markup.html" style="color:#06c;text-decoration:none;margin-right:12px;">Наценка</a>
     <a href="/price-sync.html" style="color:#06c;text-decoration:none;margin-right:12px;">Сверка цен</a>
@@ -100,22 +100,21 @@
     <a href="/feed-view.html" style="color:#06c;text-decoration:none;margin-right:12px;">Смотреть фид</a>
     <a href="/supplier-feed.html" style="color:#06c;text-decoration:none;margin-right:12px;">Входящий фид</a>
     <a href="/events.html" style="color:#06c;text-decoration:none;margin-right:12px;">События</a>
-    <a href="/ozon.html" style="color:#06c;text-decoration:none;">Ozon</a>
+    <a href="/ozon.html" style="color:#222;font-weight:bold;text-decoration:underline;">Ozon</a>
   </div>
   <div class="bar">
     <input id="search" type="text" placeholder="поиск по SKU / названию">
     <select id="category"><option value="">Все категории</option></select>
     <button id="refresh">Обновить таблицу</button>
-    <button id="sync">Запустить синхронизацию ЯМ</button>
+    <button id="sync">Запустить синхронизацию Ozon</button>
     <span class="gear-wrap">
-      <button class="gear-btn" id="gear" title="Колонки">⚙</button>
-      <div class="gear-panel" id="gearPanel"></div>
+      <button class="gear-btn" title="Настройка колонок">&#9881;</button>
+      <div class="gear-panel"></div>
     </span>
-    <span class="stats" id="stats">…</span>
+    <span id="stats" class="stats"></span>
   </div>
   <div id="table"></div>
-
   <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
-  <script src="/app.js"></script>
+  <script src="/ozon.js"></script>
 </body>
 </html>

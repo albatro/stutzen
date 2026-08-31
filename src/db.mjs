@@ -450,3 +450,153 @@ export function inTx(fn) {
     throw e;
   }
 }
+
+// ---- Ozon ----
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ozon_products (
+    product_id    INTEGER PRIMARY KEY,
+    offer_id      TEXT,
+    name          TEXT,
+    category_id   INTEGER,
+    category_name TEXT,
+    image_url     TEXT,
+    barcode       TEXT,
+    status        TEXT,
+    is_archived   INTEGER DEFAULT 0,
+    updated_at    TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ozon_products_offer ON ozon_products(offer_id);
+  CREATE INDEX IF NOT EXISTS idx_ozon_products_category ON ozon_products(category_id);
+
+  CREATE TABLE IF NOT EXISTS ozon_prices (
+    product_id      INTEGER PRIMARY KEY,
+    price           REAL,
+    old_price       REAL,
+    min_price       REAL,
+    marketing_price REAL,
+    currency        TEXT DEFAULT 'RUB',
+    updated_at      TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS ozon_stocks (
+    product_id     INTEGER NOT NULL,
+    warehouse_id   INTEGER NOT NULL,
+    type           TEXT NOT NULL,
+    present        INTEGER NOT NULL DEFAULT 0,
+    reserved       INTEGER NOT NULL DEFAULT 0,
+    warehouse_name TEXT,
+    updated_at     TEXT NOT NULL,
+    PRIMARY KEY (product_id, warehouse_id, type)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ozon_stocks_product ON ozon_stocks(product_id);
+
+  CREATE TABLE IF NOT EXISTS ozon_commissions (
+    product_id             INTEGER PRIMARY KEY,
+    fbo_commission_percent REAL,
+    fbo_fulfillment_amount REAL,
+    fbo_deliv_amount       REAL,
+    fbs_commission_percent REAL,
+    fbs_first_mile_amount  REAL,
+    fbs_deliv_amount       REAL,
+    raw_json               TEXT,
+    updated_at             TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS ozon_sync_runs (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at            TEXT NOT NULL,
+    finished_at           TEXT,
+    status                TEXT NOT NULL,
+    products_processed    INTEGER DEFAULT 0,
+    prices_processed      INTEGER DEFAULT 0,
+    stocks_processed      INTEGER DEFAULT 0,
+    commissions_processed INTEGER DEFAULT 0,
+    errors_count          INTEGER DEFAULT 0,
+    error_message         TEXT,
+    details               TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_ozon_sync_runs_started ON ozon_sync_runs(started_at DESC);
+`);
+
+export function upsertOzonProduct(p) {
+  db.prepare(`
+    INSERT INTO ozon_products (product_id, offer_id, name, category_id, category_name, image_url, barcode, status, is_archived, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id) DO UPDATE SET
+      offer_id = excluded.offer_id,
+      name = excluded.name,
+      category_id = excluded.category_id,
+      category_name = excluded.category_name,
+      image_url = excluded.image_url,
+      barcode = excluded.barcode,
+      status = excluded.status,
+      is_archived = excluded.is_archived,
+      updated_at = excluded.updated_at
+  `).run(p.product_id, p.offer_id ?? null, p.name ?? null, p.category_id ?? null,
+         p.category_name ?? null, p.image_url ?? null, p.barcode ?? null,
+         p.status ?? null, p.is_archived ? 1 : 0, p.updated_at);
+}
+
+export function upsertOzonPrice(p) {
+  db.prepare(`
+    INSERT INTO ozon_prices (product_id, price, old_price, min_price, marketing_price, currency, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id) DO UPDATE SET
+      price = excluded.price,
+      old_price = excluded.old_price,
+      min_price = excluded.min_price,
+      marketing_price = excluded.marketing_price,
+      currency = excluded.currency,
+      updated_at = excluded.updated_at
+  `).run(p.product_id, p.price ?? null, p.old_price ?? null, p.min_price ?? null,
+         p.marketing_price ?? null, p.currency ?? 'RUB', p.updated_at);
+}
+
+export function deleteOzonStocksForProduct(productId) {
+  db.prepare('DELETE FROM ozon_stocks WHERE product_id = ?').run(productId);
+}
+
+export function insertOzonStock(s) {
+  db.prepare(`
+    INSERT INTO ozon_stocks (product_id, warehouse_id, type, present, reserved, warehouse_name, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id, warehouse_id, type) DO UPDATE SET
+      present = excluded.present,
+      reserved = excluded.reserved,
+      warehouse_name = excluded.warehouse_name,
+      updated_at = excluded.updated_at
+  `).run(s.product_id, s.warehouse_id, s.type, s.present ?? 0, s.reserved ?? 0,
+         s.warehouse_name ?? null, s.updated_at);
+}
+
+export function upsertOzonCommission(c) {
+  db.prepare(`
+    INSERT INTO ozon_commissions (product_id, fbo_commission_percent, fbo_fulfillment_amount, fbo_deliv_amount, fbs_commission_percent, fbs_first_mile_amount, fbs_deliv_amount, raw_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id) DO UPDATE SET
+      fbo_commission_percent = excluded.fbo_commission_percent,
+      fbo_fulfillment_amount = excluded.fbo_fulfillment_amount,
+      fbo_deliv_amount = excluded.fbo_deliv_amount,
+      fbs_commission_percent = excluded.fbs_commission_percent,
+      fbs_first_mile_amount = excluded.fbs_first_mile_amount,
+      fbs_deliv_amount = excluded.fbs_deliv_amount,
+      raw_json = excluded.raw_json,
+      updated_at = excluded.updated_at
+  `).run(c.product_id, c.fbo_commission_percent ?? null, c.fbo_fulfillment_amount ?? null,
+         c.fbo_deliv_amount ?? null, c.fbs_commission_percent ?? null,
+         c.fbs_first_mile_amount ?? null, c.fbs_deliv_amount ?? null,
+         c.raw_json ?? null, c.updated_at);
+}
+
+export function startOzonSyncRun() {
+  const r = db.prepare(`INSERT INTO ozon_sync_runs (started_at, status) VALUES (?, 'running')`).run(new Date().toISOString());
+  return Number(r.lastInsertRowid);
+}
+
+export function updateOzonSyncRun(id, fields) {
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return;
+  const sets = keys.map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE ozon_sync_runs SET ${sets} WHERE id = ?`).run(...keys.map(k => fields[k]), id);
+}

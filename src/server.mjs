@@ -7,6 +7,7 @@ import { runSalesImport } from './sales/import.mjs';
 import { ym } from './ym/client.mjs';
 import { calcTargetPrice } from './pricing/calculator.mjs';
 import { getFeedState, regenerateFeed, initFeedCache, scheduleFeedRegeneration, ensureOffersCache } from './feed/cache.mjs';
+import { runOzonSync } from './ozon/sync.mjs';
 
 const app = express();
 app.use(express.json());
@@ -16,12 +17,14 @@ let syncInProgress = false;
 let supplierImportInProgress = false;
 let salesImportInProgress = false;
 let pricesSendInProgress = false;
+let ozonSyncInProgress = false;
 
 // Закрываем записи, оставшиеся в статусе 'running' из-за перезапуска контейнера.
 {
   const abortedAt = new Date().toISOString();
   db.prepare(`UPDATE supplier_imports SET status='error', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
   db.prepare(`UPDATE sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
+  db.prepare(`UPDATE ozon_sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
 }
 
 // ---- Я.Маркет таблица ----
@@ -1116,6 +1119,98 @@ app.get('/api/sales/monthly.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="sales-monthly-${ts}.csv"`);
   res.send('﻿' + lines.join('\r\n'));
+});
+
+// ---- Ozon ----
+
+app.get('/api/ozon/stats', (req, res) => {
+  const products = db.prepare('SELECT COUNT(*) AS c FROM ozon_products').get().c;
+  const prices = db.prepare('SELECT COUNT(*) AS c FROM ozon_prices').get().c;
+  const stockTotal = db.prepare('SELECT SUM(present) AS s FROM ozon_stocks').get().s ?? 0;
+  const commissions = db.prepare('SELECT COUNT(*) AS c FROM ozon_commissions').get().c;
+  const lastSync = db.prepare('SELECT * FROM ozon_sync_runs ORDER BY id DESC LIMIT 1').get() ?? null;
+  res.json({ products, prices, stockTotal, commissions, lastSync, syncInProgress: ozonSyncInProgress });
+});
+
+app.get('/api/ozon/categories', (req, res) => {
+  const rows = db.prepare(`
+    SELECT category_id, category_name, COUNT(*) AS cnt
+    FROM ozon_products
+    WHERE category_id IS NOT NULL
+    GROUP BY category_id, category_name
+    ORDER BY category_name
+  `).all();
+  res.json(rows);
+});
+
+app.get('/api/ozon/products', (req, res) => {
+  const search = (req.query.search ?? '').toString().trim();
+  const category = req.query.category ? Number(req.query.category) : null;
+  const sort = (req.query.sort ?? 'product_id').toString();
+  const dir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+  const sortMap = {
+    product_id: 'p.product_id',
+    offer_id: 'p.offer_id',
+    name: 'p.name',
+    category_name: 'p.category_name',
+    price: 'pr.price',
+    stock_total: 'COALESCE(s.stock_total, 0)',
+    fbo_commission_percent: 'c.fbo_commission_percent',
+    fbo_fulfillment_amount: 'c.fbo_fulfillment_amount',
+    fbs_commission_percent: 'c.fbs_commission_percent',
+    updated_at: 'p.updated_at',
+  };
+  const sortExpr = sortMap[sort] ?? sortMap.product_id;
+
+  const where = [];
+  const params = [];
+  if (search) {
+    where.push(`(p.offer_id LIKE ? OR p.name LIKE ?)`);
+    const q = `%${search}%`;
+    params.push(q, q);
+  }
+  if (category) { where.push(`p.category_id = ?`); params.push(category); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const baseQuery = `
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
+    LEFT JOIN (
+      SELECT product_id, SUM(present) AS stock_total, SUM(reserved) AS stock_reserved
+      FROM ozon_stocks GROUP BY product_id
+    ) s ON s.product_id = p.product_id
+    ${whereSql}
+  `;
+
+  const total = db.prepare(`SELECT COUNT(*) AS c ${baseQuery}`).get(...params).c;
+  const rows = db.prepare(`
+    SELECT
+      p.product_id, p.offer_id, p.name, p.category_name, p.image_url, p.status,
+      pr.price, pr.old_price, pr.min_price, pr.marketing_price,
+      COALESCE(s.stock_total, 0) AS stock_total,
+      COALESCE(s.stock_reserved, 0) AS stock_reserved,
+      c.fbo_commission_percent, c.fbo_fulfillment_amount, c.fbo_deliv_amount,
+      c.fbs_commission_percent, c.fbs_first_mile_amount, c.fbs_deliv_amount,
+      p.updated_at
+    ${baseQuery}
+    ORDER BY ${sortExpr} ${dir}
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  res.json({ total, rows });
+});
+
+app.post('/api/ozon/sync', (req, res) => {
+  if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
+  ozonSyncInProgress = true;
+  res.json({ ok: true, message: 'Синхронизация Ozon запущена' });
+  runOzonSync()
+    .catch(e => console.error('[OZON] sync failed:', e))
+    .finally(() => { ozonSyncInProgress = false; });
 });
 
 // ---- Cron ----
