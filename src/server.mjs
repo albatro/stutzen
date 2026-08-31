@@ -1,6 +1,6 @@
 import express from 'express';
 import cron from 'node-cron';
-import { db } from './db.mjs';
+import { db, getSetting, setSetting } from './db.mjs';
 import { runSync } from './ym/sync.mjs';
 import { runSupplierImport } from './supplier/import.mjs';
 import { runSalesImport } from './sales/import.mjs';
@@ -1118,6 +1118,20 @@ app.get('/api/sales/monthly.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="sales-monthly-${ts}.csv"`);
   res.send('﻿' + lines.join('\r\n'));
+});
+
+// ---- Настройки ----
+
+app.get('/api/settings', (_req, res) => {
+  const rows = db.prepare('SELECT key, value FROM settings ORDER BY key').all();
+  res.json(rows);
+});
+
+app.post('/api/settings', (req, res) => {
+  const { key, value } = req.body ?? {};
+  if (!key || value === undefined) return res.status(400).json({ error: 'key и value обязательны' });
+  setSetting(String(key), String(value));
+  res.json({ ok: true });
 });
 
 // ---- Ozon ----

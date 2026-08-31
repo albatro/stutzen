@@ -451,6 +451,27 @@ export function inTx(fn) {
   }
 }
 
+// ---- Настройки (ключ-значение) ----
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+export function getSetting(key) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
+}
+
+export function setSetting(key, value) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+// Начальные значения Ozon (INSERT OR IGNORE — не перезапишет если уже есть)
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('ozon_client_id', '2216730')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('ozon_api_key', '3bc5da36-1696-4bff-a825-2eeb6cec0889')").run();
+
 // ---- Ozon ----
 
 db.exec(`

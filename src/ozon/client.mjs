@@ -1,7 +1,13 @@
+import { getSetting } from '../db.mjs';
+
 const BASE = 'https://api-seller.ozon.ru';
 
-const CLIENT_ID = process.env.OZON_CLIENT_ID;
-const API_KEY = process.env.OZON_API_KEY;
+function getCreds() {
+  return {
+    clientId: getSetting('ozon_client_id') ?? process.env.OZON_CLIENT_ID ?? null,
+    apiKey:   getSetting('ozon_api_key')   ?? process.env.OZON_API_KEY   ?? null,
+  };
+}
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const MIN_INTERVAL_MS = 200;
@@ -15,15 +21,16 @@ async function throttle() {
 }
 
 export async function ozonFetch(method, path, body, attempt = 1) {
-  if (!CLIENT_ID || !API_KEY) throw new Error('OZON_CLIENT_ID / OZON_API_KEY не заданы');
+  const { clientId, apiKey } = getCreds();
+  if (!clientId || !apiKey) throw new Error('Ozon credentials не заданы (настройки → ozon_client_id / ozon_api_key)');
   await throttle();
   const url = new URL(BASE + path);
   try {
     const res = await fetch(url, {
       method,
       headers: {
-        'Client-Id': CLIENT_ID,
-        'Api-Key': API_KEY,
+        'Client-Id': clientId,
+        'Api-Key': apiKey,
         'Content-Type': 'application/json',
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
