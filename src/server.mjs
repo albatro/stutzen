@@ -1220,14 +1220,35 @@ app.get('/api/ozon/products', (req, res) => {
 app.get('/api/ozon/debug', async (req, res) => {
   try {
     const { ozonFetch } = await import('./ozon/client.mjs');
-    const data = await ozonFetch('POST', '/v3/product/list', {
-      filter: { visibility: 'ALL' },
-      last_id: '',
-      limit: 5,
+
+    // 1. Список товаров
+    const list = await ozonFetch('POST', '/v3/product/list', {
+      filter: { visibility: 'ALL' }, last_id: '', limit: 2,
     });
-    res.json({ ok: true, raw: data });
+    const productIds = (list?.result?.items ?? []).map(i => i.product_id);
+
+    // 2. Детали по первым 2 товарам
+    const info = productIds.length
+      ? await ozonFetch('POST', '/v3/product/info/list', { product_id: productIds })
+      : null;
+
+    // 3. Цены по первым 2 товарам
+    const prices = productIds.length
+      ? await ozonFetch('POST', '/v5/product/info/prices', {
+          filter: { product_id: productIds, visibility: 'ALL' }, last_id: '', limit: 2,
+        })
+      : null;
+
+    // 4. Остатки по первым 2 товарам
+    const stocks = productIds.length
+      ? await ozonFetch('POST', '/v4/product/info/stocks', {
+          filter: { product_id: productIds, visibility: 'ALL' }, last_id: '', limit: 2,
+        })
+      : null;
+
+    res.json({ list, info, prices, stocks });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message, stack: e.stack });
   }
 });
 
