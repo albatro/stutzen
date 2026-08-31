@@ -7,7 +7,6 @@ import { runSalesImport } from './sales/import.mjs';
 import { ym } from './ym/client.mjs';
 import { calcTargetPrice } from './pricing/calculator.mjs';
 import { getFeedState, regenerateFeed, initFeedCache, scheduleFeedRegeneration, ensureOffersCache } from './feed/cache.mjs';
-import { runOzonSync } from './ozon/sync.mjs';
 
 const app = express();
 app.use(express.json());
@@ -24,7 +23,7 @@ let ozonSyncInProgress = false;
   const abortedAt = new Date().toISOString();
   db.prepare(`UPDATE supplier_imports SET status='error', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
   db.prepare(`UPDATE sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
-  db.prepare(`UPDATE ozon_sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt);
+  try { db.prepare(`UPDATE ozon_sync_runs SET status='failed', finished_at=?, error_message='Прервано при перезапуске' WHERE status='running'`).run(abortedAt); } catch {}
 }
 
 // ---- Я.Маркет таблица ----
@@ -1208,7 +1207,8 @@ app.post('/api/ozon/sync', (req, res) => {
   if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
   ozonSyncInProgress = true;
   res.json({ ok: true, message: 'Синхронизация Ozon запущена' });
-  runOzonSync()
+  import('./ozon/sync.mjs')
+    .then(m => m.runOzonSync())
     .catch(e => console.error('[OZON] sync failed:', e))
     .finally(() => { ozonSyncInProgress = false; });
 });
