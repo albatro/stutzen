@@ -1246,7 +1246,25 @@ app.get('/api/ozon/debug', async (req, res) => {
         })
       : null;
 
-    res.json({ list, info, prices, stocks });
+    // 5. raw_json из БД — что уже сохранено
+    const dbCommissions = db.prepare(
+      'SELECT product_id, raw_json FROM ozon_commissions WHERE raw_json IS NOT NULL LIMIT 3'
+    ).all().map(r => ({ product_id: r.product_id, raw: JSON.parse(r.raw_json) }));
+
+    // 6. Пример финансовых транзакций (эквайринг и пр.)
+    let transactions = null;
+    try {
+      const dateFrom = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
+      const dateTo   = new Date().toISOString().slice(0, 10);
+      transactions = await ozonFetch('POST', '/v3/finance/transaction/list', {
+        filter: { date: { from: `${dateFrom}T00:00:00.000Z`, to: `${dateTo}T23:59:59.999Z` }, operation_type: [], posting_number: '', transaction_type: 'all' },
+        page: 1, page_size: 5,
+      });
+    } catch (e2) {
+      transactions = { error: e2.message };
+    }
+
+    res.json({ list, info, prices, stocks, dbCommissions, transactions });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message, stack: e.stack });
   }
