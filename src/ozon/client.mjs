@@ -3,10 +3,6 @@ const BASE = 'https://api-seller.ozon.ru';
 const CLIENT_ID = process.env.OZON_CLIENT_ID;
 const API_KEY = process.env.OZON_API_KEY;
 
-if (!CLIENT_ID || !API_KEY) {
-  throw new Error('OZON_CLIENT_ID / OZON_API_KEY не заданы');
-}
-
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const MIN_INTERVAL_MS = 200;
 let lastRequestAt = 0;
@@ -19,6 +15,7 @@ async function throttle() {
 }
 
 export async function ozonFetch(method, path, body, attempt = 1) {
+  if (!CLIENT_ID || !API_KEY) throw new Error('OZON_CLIENT_ID / OZON_API_KEY не заданы');
   await throttle();
   const url = new URL(BASE + path);
   try {
