@@ -71,7 +71,7 @@ export const ozon = {
   async *iterProducts({ pageSize = 1000 } = {}) {
     let lastId = '';
     while (true) {
-      const data = await ozonFetch('POST', '/v2/product/list', {
+      const data = await ozonFetch('POST', '/v3/product/list', {
         filter: { visibility: 'ALL' },
         last_id: lastId,
         limit: pageSize,
@@ -127,12 +127,4 @@ export const ozon = {
     }
   },
 
-  // Комиссии по списку product_id (до 1000 за раз).
-  async getCommissions(productIds) {
-    if (productIds.length === 0) return [];
-    const data = await ozonFetch('POST', '/v1/product/info/commission', {
-      product_id: productIds,
-    });
-    return data?.result ?? [];
-  },
 };

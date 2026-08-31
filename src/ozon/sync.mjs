@@ -8,7 +8,6 @@ import {
 
 const log = (...a) => console.log(`[${new Date().toLocaleTimeString()}]`, ...a);
 const INFO_BATCH = 1000;
-const COMM_BATCH = 1000;
 
 export async function runOzonSync() {
   const runId = startOzonSyncRun();
@@ -20,7 +19,7 @@ export async function runOzonSync() {
   try {
     // 1. Собираем все product_id + offer_id.
     const allProductIds = [];
-    const offerIdMap = new Map(); // product_id → offer_id
+    const offerIdMap = new Map();
 
     for await (const page of ozon.iterProducts()) {
       for (const item of page) {
@@ -43,7 +42,7 @@ export async function runOzonSync() {
               product_id: item.id,
               offer_id: item.offer_id ?? offerIdMap.get(item.id) ?? null,
               name: item.name ?? null,
-              category_id: item.category_id ?? null,
+              category_id: item.category_id ?? item.description_category_id ?? null,
               category_name: item.category_name ?? null,
               image_url: item.primary_image ?? item.images?.[0] ?? null,
               barcode: item.barcode ?? null,
@@ -63,7 +62,7 @@ export async function runOzonSync() {
     }
     log(`[OZON] Продукты сохранены: ${productsProcessed}`);
 
-    // 3. Цены.
+    // 3. Цены + комиссии (commissions приходят внутри каждого item от /v5/product/info/prices).
     try {
       for await (const page of ozon.iterPrices()) {
         inTx(() => {
@@ -79,18 +78,35 @@ export async function runOzonSync() {
               updated_at: now,
             });
             pricesProcessed++;
+
+            // Комиссии идут вместе с ценами.
+            const c = item.commissions;
+            if (c) {
+              upsertOzonCommission({
+                product_id: item.product_id,
+                fbo_commission_percent: c.sales_percent_fbo ?? c.sales_percent ?? null,
+                fbo_fulfillment_amount: c.fbo_fulfillment_amount ?? null,
+                fbo_deliv_amount: c.fbo_deliv_to_customer_amount ?? null,
+                fbs_commission_percent: c.sales_percent_fbs ?? c.sales_percent ?? null,
+                fbs_first_mile_amount: c.fbs_first_mile_min_amount ?? null,
+                fbs_deliv_amount: c.fbs_deliv_to_customer_amount ?? null,
+                raw_json: JSON.stringify(c),
+                updated_at: now,
+              });
+              commissionsProcessed++;
+            }
           }
         });
-        updateOzonSyncRun(runId, { prices_processed: pricesProcessed });
+        updateOzonSyncRun(runId, { prices_processed: pricesProcessed, commissions_processed: commissionsProcessed });
       }
     } catch (e) {
       errors++;
       errorMessages.push(`prices: ${e.message}`);
       log(`! [OZON] Ошибка цен: ${e.message}`);
     }
-    log(`[OZON] Цены сохранены: ${pricesProcessed}`);
+    log(`[OZON] Цены: ${pricesProcessed}, комиссии: ${commissionsProcessed}`);
 
-    // 4. Остатки — полная замена: удаляем старые и вставляем новые.
+    // 4. Остатки — полная замена.
     try {
       const cleared = new Set();
       for await (const page of ozon.iterStocks()) {
@@ -122,39 +138,6 @@ export async function runOzonSync() {
       log(`! [OZON] Ошибка остатков: ${e.message}`);
     }
     log(`[OZON] Остатки сохранены: ${stocksProcessed}`);
-
-    // 5. Комиссии батчами по COMM_BATCH.
-    for (let i = 0; i < allProductIds.length; i += COMM_BATCH) {
-      const batch = allProductIds.slice(i, i + COMM_BATCH);
-      try {
-        const commissions = await ozon.getCommissions(batch);
-        inTx(() => {
-          for (const item of commissions) {
-            const schemas = item.sale_schema ?? [];
-            const fbo = schemas.find(s => s.type === 'fbo' || s.name === 'FBO');
-            const fbs = schemas.find(s => s.type === 'fbs' || s.name === 'FBS');
-            upsertOzonCommission({
-              product_id: item.product_id,
-              fbo_commission_percent: fbo?.commission_percent ?? null,
-              fbo_fulfillment_amount: fbo?.fbo_fulfillment_amount ?? null,
-              fbo_deliv_amount: fbo?.fbo_deliv_to_customer_amount ?? null,
-              fbs_commission_percent: fbs?.commission_percent ?? null,
-              fbs_first_mile_amount: fbs?.fbs_first_mile_amount ?? null,
-              fbs_deliv_amount: fbs?.fbs_deliv_to_customer_amount ?? null,
-              raw_json: JSON.stringify(schemas),
-              updated_at: now,
-            });
-            commissionsProcessed++;
-          }
-        });
-      } catch (e) {
-        errors++;
-        errorMessages.push(`commissions: ${e.message}`);
-        log(`! [OZON] Ошибка комиссий: ${e.message}`);
-      }
-      updateOzonSyncRun(runId, { commissions_processed: commissionsProcessed, errors_count: errors });
-    }
-    log(`[OZON] Комиссии сохранены: ${commissionsProcessed}`);
 
     updateOzonSyncRun(runId, {
       finished_at: new Date().toISOString(),
