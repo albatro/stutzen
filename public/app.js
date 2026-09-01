@@ -207,6 +207,115 @@ async function pollStats() {
   }
 }
 
+// ---- Логи синхронизации ЯМ ----
+const fmtDate = (s) => s ? new Date(s).toLocaleString('ru-RU') : '—';
+const fmtNum = (v) => v == null ? '—' : Number(v).toLocaleString('ru-RU');
+const fmtDur = (a, b) => {
+  if (!a || !b) return '';
+  const ms = new Date(b) - new Date(a);
+  if (ms < 0) return '';
+  if (ms < 60000) return `${Math.round(ms / 1000)} с`;
+  const m = Math.floor(ms / 60000), s = Math.round((ms % 60000) / 1000);
+  return s ? `${m} мин ${s} с` : `${m} мин`;
+};
+
+function nextCronAt(expr) {
+  if (!expr) return null;
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour] = parts;
+  if (parts[2] !== '*' || parts[3] !== '*' || parts[4] !== '*') return null;
+  const now = new Date(), next = new Date(now);
+  next.setSeconds(0, 0);
+  const mH = /^\*\/(\d+)$/.exec(hour);
+  if (min === '0' && mH) {
+    const n = Number(mH[1]);
+    next.setMinutes(0);
+    let h = next.getHours() + 1;
+    while (h % n !== 0) h++;
+    if (h >= 24) { next.setDate(next.getDate() + 1); h %= 24; }
+    next.setHours(h); return next;
+  }
+  if (hour === '*' && /^\d+$/.test(min)) {
+    next.setMinutes(Number(min));
+    if (next <= now) next.setHours(next.getHours() + 1);
+    return next;
+  }
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
+    next.setHours(Number(hour), Number(min));
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next;
+  }
+  return null;
+}
+
+function fmtUntil(ms) {
+  if (ms <= 0) return 'с минуты на минуту';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `через ${min} мин`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `через ${h} ч ${m} мин` : `через ${h} ч`;
+}
+
+let _ymSchedule = null;
+
+function updateYmNextLabel() {
+  if (!_ymSchedule?.sync_cron) return;
+  const nextAt = nextCronAt(_ymSchedule.sync_cron);
+  const el = $('#sl-next');
+  if (el && nextAt) el.textContent = `· следующий ${fmtUntil(nextAt - Date.now())}`;
+}
+
+async function loadSyncLogs() {
+  try {
+    const [runs, sched] = await Promise.all([
+      fetch('/api/ym/sync-runs?limit=15').then(r => r.json()),
+      fetch('/api/feed-logs/schedule').then(r => r.json()),
+    ]);
+    _ymSchedule = sched;
+
+    const cronEl = $('#sl-cron');
+    if (cronEl) cronEl.textContent = sched.sync_cron ?? 'не задан (SYNC_CRON)';
+    updateYmNextLabel();
+
+    const rows = runs.rows ?? [];
+    if (!rows.length) {
+      $('#sl-table').innerHTML = '<span style="color:#aaa">Синхронизаций ещё не было</span>';
+      return;
+    }
+    const badge = (s) => {
+      const norm = (s === 'failed') ? 'error' : s;
+      const label = norm === 'success' ? 'успех' : norm === 'partial' ? 'частично' : norm === 'running' ? 'идёт' : 'ошибка';
+      return `<span class="badge ${norm}">${label}</span>`;
+    };
+    $('#sl-table').innerHTML = `<table>
+      <thead><tr>
+        <th>#</th><th>Начало</th><th>Длит.</th><th>Статус</th>
+        <th class="r">Офферов</th><th class="r">Цен</th><th class="r">Остатков</th><th class="r">Ошибок</th>
+        <th>Сообщение</th>
+      </tr></thead>
+      <tbody>${rows.map(r => {
+        const msg = r.error_message || r.details || '';
+        return `<tr>
+          <td>${r.id}</td>
+          <td>${fmtDate(r.started_at)}</td>
+          <td>${fmtDur(r.started_at, r.finished_at)}</td>
+          <td>${badge(r.status)}</td>
+          <td class="r">${fmtNum(r.offers_processed)}</td>
+          <td class="r">${fmtNum(r.prices_processed)}</td>
+          <td class="r">${fmtNum(r.stocks_processed)}</td>
+          <td class="r">${fmtNum(r.errors_count)}</td>
+          <td class="err-txt" title="${msg.replace(/"/g, '&quot;')}">${msg.slice(0, 150)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch {}
+}
+
+setInterval(updateYmNextLabel, 10000);
+
 loadCategories();
 pollStats();
+loadSyncLogs();
 setInterval(pollStats, 5000);
+setInterval(loadSyncLogs, 30000);
