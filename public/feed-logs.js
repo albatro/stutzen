@@ -316,6 +316,17 @@ function updateNextLabels() {
     }
   }
 
+  const syncEl = $('#syncNext');
+  if (syncEl) {
+    const nextAt = nextCronAt(s.sync_cron);
+    if (nextAt) {
+      const ms = nextAt.getTime() - Date.now();
+      syncEl.innerHTML = `<b>${fmtTimeUntil(ms)}</b> <span class="hint">(${fmtAt(nextAt)})</span>`;
+    } else {
+      syncEl.innerHTML = s.sync_cron ? '—' : '<span style="color:#aaa">не задан — установи SYNC_CRON в .env</span>';
+    }
+  }
+
   // also update dashboard "next" labels live if dashboard is rendered
   if (_dashData) {
     const suppNextAt = s.supplier_next_at ? new Date(s.supplier_next_at) : null;
