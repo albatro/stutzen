@@ -1207,7 +1207,9 @@ app.get('/api/ozon/products', (req, res) => {
       COALESCE(s.stock_total, 0) AS stock_total,
       COALESCE(s.stock_reserved, 0) AS stock_reserved,
       c.fbo_commission_percent, c.fbo_fulfillment_amount, c.fbo_deliv_amount,
-      c.fbs_commission_percent, c.fbs_first_mile_amount, c.fbs_deliv_amount,
+      c.fbo_return_flow_amount, c.fbo_return_flow_trans_max_amount, c.fbo_return_flow_trans_min_amount,
+      c.fbs_commission_percent, c.fbs_first_mile_amount, c.fbs_first_mile_max_amount, c.fbs_deliv_amount,
+      c.fbs_return_flow_amount, c.fbs_return_flow_trans_max_amount, c.fbs_return_flow_trans_min_amount,
       p.updated_at
     ${baseQuery}
     ORDER BY ${sortExpr} ${dir}
