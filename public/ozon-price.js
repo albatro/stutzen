@@ -217,6 +217,23 @@ async function loadCategories() {
   }
 }
 
+// ---- Фильтр по соотношению текущей цены к предложению ----
+function applyDeltaFilter() {
+  table.clearFilter();
+  const mode = $('#delta-filter').value;
+  if (!mode) return;
+  table.setFilter((row) => {
+    const cur = row.current_price;
+    const prop = row.proposed_fbs;
+    if (mode === 'no-current') return cur == null;
+    if (prop == null) return false;
+    if (mode === 'below') return cur != null && cur < prop;
+    if (mode === 'equal') return cur != null && cur === prop;
+    if (mode === 'above') return cur != null && cur > prop;
+    return true;
+  });
+}
+
 // ---- Загрузка данных ----
 async function loadData() {
   const search = $('#search').value.trim();
@@ -232,7 +249,8 @@ async function loadData() {
   try {
     const data = await fetch(`/api/ozon/price-proposals?${p}`).then(r => r.json());
     if (data.error) { alert(data.error); return; }
-    table.setData(data.rows);
+    await table.setData(data.rows);
+    applyDeltaFilter();
     $('#stats').textContent = `Позиций: ${data.total}`;
   } finally {
     btn.disabled = false;
@@ -243,6 +261,7 @@ $('#refresh')?.addEventListener('click', loadData);
 $('#search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadData(); });
 $('#category')?.addEventListener('change', loadData);
 $('#only-matched')?.addEventListener('change', loadData);
+$('#delta-filter')?.addEventListener('change', applyDeltaFilter);
 
 loadCategories();
 loadData();

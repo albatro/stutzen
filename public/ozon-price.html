@@ -84,6 +84,13 @@
     <label style="padding:0;gap:6px;">
       <input id="only-matched" type="checkbox" checked> Только с закупочной ценой
     </label>
+    <select id="delta-filter">
+      <option value="">Любое изменение</option>
+      <option value="below">Текущая ниже предложения</option>
+      <option value="equal">Текущая равна предложению</option>
+      <option value="above">Текущая выше предложения</option>
+      <option value="no-current">Нет текущей цены</option>
+    </select>
     <button id="refresh">Обновить</button>
     <span class="gear-wrap">
       <button class="gear-btn" title="Настройка колонок">&#9881;</button>
