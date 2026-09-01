@@ -643,6 +643,20 @@ export function upsertOzonCommission(c) {
   );
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ozon_price_updates (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    offer_id  TEXT NOT NULL,
+    old_price REAL,
+    new_price REAL NOT NULL,
+    status    TEXT NOT NULL,   -- 'sent' | 'failed'
+    error     TEXT,
+    sent_at   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ozon_price_updates_offer ON ozon_price_updates(offer_id);
+  CREATE INDEX IF NOT EXISTS idx_ozon_price_updates_sent  ON ozon_price_updates(sent_at DESC);
+`);
+
 // ---- Ozon markup rules ----
 db.exec(`
   CREATE TABLE IF NOT EXISTS ozon_markup_rules (

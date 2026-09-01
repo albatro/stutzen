@@ -42,6 +42,11 @@
     .gear-panel .gear-actions { display: flex; gap: 8px; border-top: 1px solid #eee; padding-top: 8px; margin-top: 6px; }
     .gear-panel .gear-actions button { background: #f0f0f0; font-size: 12px; padding: 4px 8px; }
 
+    .send-btn { background: #1a73e8; color: #fff; border: none; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+    .send-btn:disabled { background: #aaa; cursor: wait; }
+    .send-ok  { color: #1a7a3a; font-size: 12px; font-weight: 600; }
+    .send-err { color: #c00;    font-size: 12px; cursor: help; }
+
     /* Tooltip */
     .calc-tip {
       display: none; position: fixed;
@@ -92,6 +97,7 @@
       <option value="no-current">Нет текущей цены</option>
     </select>
     <button id="refresh">Обновить</button>
+    <button id="send-all" disabled>Отправить всё в Ozon</button>
     <span class="gear-wrap">
       <button class="gear-btn" title="Настройка колонок">&#9881;</button>
       <div class="gear-panel"></div>

@@ -1,6 +1,35 @@
 const $ = (sel) => document.querySelector(sel);
 const fmt = (v) => v == null ? '' : Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
+// ---- Статус отправки (offer_id → { ok, error }) ----
+const _sendStatus = new Map();
+
+async function sendToOzon(rows) {
+  const items = rows
+    .filter(r => r.proposed_fbs != null)
+    .map(r => ({ offer_id: r.offer_id, price: r.proposed_fbs }));
+  if (!items.length) return;
+
+  const data = await fetch('/api/ozon/update-prices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  }).then(r => r.json());
+
+  if (data.error) { alert('Ошибка: ' + data.error); return; }
+
+  for (const r of data.results ?? []) {
+    _sendStatus.set(r.offer_id, {
+      ok: r.updated,
+      error: r.errors?.length ? r.errors.join('; ') : null,
+    });
+  }
+  // Перерисовываем строки с изменившимся статусом
+  for (const row of table.getRows()) {
+    if (_sendStatus.has(row.getData().offer_id)) row.reformat();
+  }
+}
+
 const fmtPrice = (cell) => {
   const v = cell.getValue();
   return v == null ? '' : `<b>${fmt(v)}</b>`;
@@ -49,6 +78,23 @@ const table = new Tabulator('#table', {
   paginationSize: 100,
   paginationSizeSelector: [50, 100, 200, 500],
   columns: [
+    { title: '', field: '_send', width: 90, headerSort: false,
+      formatter: (cell) => {
+        const d = cell.getRow().getData();
+        if (!d.proposed_fbs) return '';
+        const s = _sendStatus.get(d.offer_id);
+        if (s?.ok)    return '<span class="send-ok">✓ отправлено</span>';
+        if (s && !s.ok) return `<span class="send-err" title="${s.error ?? ''}">✗ ошибка</span>`;
+        return '<button class="send-btn">→ Ozon</button>';
+      },
+      cellClick: async (_e, cell) => {
+        if (!_e.target.classList.contains('send-btn')) return;
+        const btn = _e.target;
+        btn.disabled = true;
+        await sendToOzon([cell.getRow().getData()]);
+        btn.disabled = false;
+      },
+    },
     { title: '', field: 'image_url', width: 56, formatter: (cell) => {
         const v = cell.getValue(); return v ? `<img class="thumb" src="${v}">` : '';
       }, headerSort: false },
@@ -249,9 +295,13 @@ async function loadData() {
   try {
     const data = await fetch(`/api/ozon/price-proposals?${p}`).then(r => r.json());
     if (data.error) { alert(data.error); return; }
+    _sendStatus.clear();
     await table.setData(data.rows);
     applyDeltaFilter();
-    $('#stats').textContent = `Позиций: ${data.total}`;
+    const withPrice = data.rows.filter(r => r.proposed_fbs != null).length;
+    $('#stats').textContent = `Позиций: ${data.total} · с предложением: ${withPrice}`;
+    $('#send-all').disabled = withPrice === 0;
+    $('#send-all').textContent = `Отправить всё в Ozon (${withPrice})`;
   } finally {
     btn.disabled = false;
   }
@@ -262,6 +312,18 @@ $('#search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadDa
 $('#category')?.addEventListener('change', loadData);
 $('#only-matched')?.addEventListener('change', loadData);
 $('#delta-filter')?.addEventListener('change', applyDeltaFilter);
+
+$('#send-all')?.addEventListener('click', async () => {
+  const rows = table.getRows('active').map(r => r.getData()).filter(r => r.proposed_fbs != null);
+  if (!rows.length) return;
+  if (!confirm(`Отправить ${rows.length} ценов${rows.length === 1 ? 'ую позицию' : ' позиции'} в Ozon?`)) return;
+  const btn = $('#send-all');
+  btn.disabled = true;
+  btn.textContent = 'Отправка…';
+  await sendToOzon(rows);
+  btn.textContent = `Отправить всё в Ozon (${rows.length})`;
+  btn.disabled = false;
+});
 
 loadCategories();
 loadData();

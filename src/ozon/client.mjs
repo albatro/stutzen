@@ -110,6 +110,18 @@ export const ozon = {
     }
   },
 
+  // /v1/product/import/prices — обновление цен, price передаётся строкой
+  async updatePrices(prices) {
+    const payload = prices.map(p => ({
+      offer_id: String(p.offer_id),
+      price: String(Math.round(p.price)),
+      old_price: '0',
+      min_price: p.min_price ? String(Math.round(p.min_price)) : '0',
+    }));
+    const data = await ozonFetch('POST', '/v1/product/import/prices', { prices: payload });
+    return data?.result ?? [];
+  },
+
   // /v4/product/info/stocks — ответ в data.items, пагинация через cursor
   async *iterStocks({ pageSize = 1000 } = {}) {
     let cursor = '';

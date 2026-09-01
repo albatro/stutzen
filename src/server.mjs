@@ -1535,6 +1535,51 @@ app.get('/api/ozon/price-proposals', (req, res) => { try {
   res.json({ total: result.length, rows: result });
 } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// ---- Ozon отправка цен ----
+app.post('/api/ozon/update-prices', async (req, res) => {
+  const { items } = req.body ?? {};
+  if (!Array.isArray(items) || items.length === 0)
+    return res.status(400).json({ error: 'items required' });
+
+  try {
+    const { ozon } = await import('./ozon/client.mjs');
+    const now = new Date().toISOString();
+
+    // Собираем текущие цены для лога
+    const offerIds = items.map(i => i.offer_id);
+    const currentPrices = new Map(
+      db.prepare(
+        `SELECT p.offer_id, pr.price FROM ozon_products p LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id WHERE p.offer_id IN (${offerIds.map(() => '?').join(',')})`
+      ).all(...offerIds).map(r => [r.offer_id, r.price])
+    );
+
+    const results = [];
+    // Ozon принимает до 1000 позиций за раз
+    for (let i = 0; i < items.length; i += 1000) {
+      const chunk = items.slice(i, i + 1000);
+      const r = await ozon.updatePrices(chunk);
+      results.push(...r);
+    }
+
+    const logStmt = db.prepare(
+      `INSERT INTO ozon_price_updates (offer_id, old_price, new_price, status, error, sent_at) VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    for (const r of results) {
+      const item = items.find(i => i.offer_id === r.offer_id);
+      logStmt.run(
+        r.offer_id,
+        currentPrices.get(r.offer_id) ?? null,
+        item?.price ?? null,
+        r.updated ? 'sent' : 'failed',
+        r.errors?.length ? r.errors.join('; ') : null,
+        now,
+      );
+    }
+
+    res.json({ ok: true, results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/ozon/sync', (req, res) => {
   if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
   ozonSyncInProgress = true;
