@@ -93,19 +93,17 @@ export const ozon = {
     return data?.items ?? [];
   },
 
-  // /v5/product/info/prices — ответ в data.items, пагинация через cursor
+  // /v5/product/info/prices — ответ в data.items, пагинация через cursor (не last_id!)
   async *iterPrices({ pageSize = 1000 } = {}) {
     let cursor = '';
     while (true) {
-      const data = await ozonFetch('POST', '/v5/product/info/prices', {
-        filter: { visibility: 'ALL' },
-        last_id: cursor,
-        limit: pageSize,
-      });
+      const body = { filter: { visibility: 'ALL' }, limit: pageSize };
+      if (cursor) body.cursor = cursor;
+      const data = await ozonFetch('POST', '/v5/product/info/prices', body);
       const items = data?.items ?? [];
       if (items.length === 0) break;
       yield items;
-      cursor = data?.cursor ?? data?.last_id ?? '';
+      cursor = data?.cursor ?? '';
       if (!cursor || items.length < pageSize) break;
     }
   },
@@ -122,19 +120,17 @@ export const ozon = {
     return data?.result ?? [];
   },
 
-  // /v4/product/info/stocks — ответ в data.items, пагинация через cursor
+  // /v4/product/info/stocks — ответ в data.items, пагинация через cursor (не last_id!)
   async *iterStocks({ pageSize = 1000 } = {}) {
     let cursor = '';
     while (true) {
-      const data = await ozonFetch('POST', '/v4/product/info/stocks', {
-        filter: { visibility: 'ALL' },
-        last_id: cursor,
-        limit: pageSize,
-      });
+      const body = { filter: { visibility: 'ALL' }, limit: pageSize };
+      if (cursor) body.cursor = cursor;
+      const data = await ozonFetch('POST', '/v4/product/info/stocks', body);
       const items = data?.items ?? [];
       if (items.length === 0) break;
       yield items;
-      cursor = data?.cursor ?? data?.last_id ?? '';
+      cursor = data?.cursor ?? '';
       if (!cursor || items.length < pageSize) break;
     }
   },
