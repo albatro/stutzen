@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — авто-цены Ozon</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    .nav { font-size: 13px; margin-bottom: 14px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+
+    /* Таймер */
+    .timer-bar {
+      display: flex; align-items: center; gap: 16px;
+      background: #f8f9ff; border: 1px solid #d0d7f5;
+      border-radius: 8px; padding: 10px 16px; margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .timer-label { color: #555; }
+    .timer-val   { font-size: 20px; font-weight: 700; color: #1a73e8; font-variant-numeric: tabular-nums; }
+    .timer-auto  { margin-left: auto; font-size: 12px; color: #888; }
+
+    /* Карточки групп */
+    .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .card {
+      border-radius: 10px; padding: 16px 18px;
+      border: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .card-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+    .card-title  { font-size: 15px; font-weight: 700; }
+    .card-count  { font-size: 28px; font-weight: 800; line-height: 1; }
+    .card-desc   { font-size: 12px; color: #666; margin-bottom: 12px; line-height: 1.5; }
+
+    .card.grey   { background: #f5f5f5; }
+    .card.orange { background: #fff8f0; border-color: #ffd19a; }
+    .card.blue   { background: #f0f6ff; border-color: #a8c8f8; }
+    .card.green  { background: #f0fbf4; border-color: #a0ddb6; }
+
+    .card.orange .card-count { color: #e65100; }
+    .card.blue   .card-count { color: #1565c0; }
+    .card.green  .card-count { color: #2e7d32; }
+    .card.grey   .card-count { color: #666; }
+
+    .card-actions { display: flex; flex-direction: column; gap: 8px; }
+    .auto-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .auto-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .auto-label { cursor: pointer; user-select: none; }
+    .send-btn {
+      align-self: flex-start;
+      background: #1a73e8; color: #fff;
+      border: none; border-radius: 6px;
+      padding: 7px 16px; font-size: 13px;
+      cursor: pointer; font-weight: 600;
+    }
+    .send-btn:disabled { background: #aaa; cursor: wait; }
+    .send-result { font-size: 12px; margin-top: 4px; }
+    .send-result.ok  { color: #2e7d32; }
+    .send-result.err { color: #c00; }
+
+    /* Лог */
+    .log-section { margin-top: 20px; }
+    .log-section h2 { font-size: 14px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }
+    .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .log-table th, .log-table td { padding: 4px 8px; border-bottom: 1px solid #eee; text-align: left; }
+    .log-table th { background: #f5f5f5; }
+    .log-sent  { color: #2e7d32; }
+    .log-error { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Ozon — авто-отправка цен</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/supplier.html">Поставщик</a>
+    <a href="/markup.html">Наценка ЯМ</a>
+    <a href="/price-sync.html">Сверка цен</a>
+    <a href="/sales.html">Продажи</a>
+    <a href="/cancellations.html">Отмены</a>
+    <a href="/feed-logs.html">Логи фидов</a>
+    <a href="/feed-view.html">Смотреть фид</a>
+    <a href="/supplier-feed.html">Входящий фид</a>
+    <a href="/events.html">События</a>
+    <a href="/ozon.html">Ozon</a>
+    <a href="/ozon-profit.html">Рентабельность</a>
+    <a href="/ozon-markup.html">Наценка</a>
+    <a href="/ozon-price.html">Цены</a>
+    <a href="/ozon-bulk-prices.html" class="active">Авто-цены</a>
+  </div>
+
+  <!-- Таймер -->
+  <div class="timer-bar">
+    <span class="timer-label">Следующая авто-отправка через</span>
+    <span class="timer-val" id="timer">—</span>
+    <span class="timer-auto" id="timer-note">авто-отправка не настроена</span>
+  </div>
+
+  <!-- Карточки групп -->
+  <div class="groups">
+
+    <!-- Нет данных -->
+    <div class="card grey">
+      <div class="card-header">
+        <span class="card-count" id="cnt-no-supplier">—</span>
+        <span class="card-title">Нет данных</span>
+      </div>
+      <div class="card-desc">Нет закупочной цены или комиссий — плановая цена не рассчитана. Действий не требуется.</div>
+    </div>
+
+    <!-- Цену нужно поднять -->
+    <div class="card orange">
+      <div class="card-header">
+        <span class="card-count" id="cnt-raise">—</span>
+        <span class="card-title">Цену нужно поднять</span>
+      </div>
+      <div class="card-desc">Плановая FBS &gt; текущей на Ozon. Текущая цена ниже плановой.</div>
+      <div class="card-actions">
+        <div class="auto-row">
+          <input type="checkbox" id="auto-raise">
+          <label class="auto-label" for="auto-raise">Автоотправка каждые 15 мин</label>
+        </div>
+        <button class="send-btn" id="send-raise">Отправить сейчас</button>
+        <div class="send-result" id="res-raise"></div>
+      </div>
+    </div>
+
+    <!-- Цену можно снизить -->
+    <div class="card blue">
+      <div class="card-header">
+        <span class="card-count" id="cnt-lower">—</span>
+        <span class="card-title">Цену можно снизить</span>
+      </div>
+      <div class="card-desc">Плановая FBS &lt; текущей на Ozon. Текущая цена выше плановой.</div>
+      <div class="card-actions">
+        <div class="auto-row">
+          <input type="checkbox" id="auto-lower">
+          <label class="auto-label" for="auto-lower">Автоотправка каждые 15 мин</label>
+        </div>
+        <button class="send-btn" id="send-lower">Отправить сейчас</button>
+        <div class="send-result" id="res-lower"></div>
+      </div>
+    </div>
+
+    <!-- Цена актуальна -->
+    <div class="card green">
+      <div class="card-header">
+        <span class="card-count" id="cnt-actual">—</span>
+        <span class="card-title">Цена актуальна</span>
+      </div>
+      <div class="card-desc">Плановая FBS совпадает с текущей ценой на Ozon. Изменений не требуется.</div>
+    </div>
+
+  </div>
+
+  <!-- Лог последних отправок -->
+  <div class="log-section">
+    <h2>Последние отправки (2 часа)</h2>
+    <table class="log-table">
+      <thead>
+        <tr><th>Время</th><th>Статус</th><th>Кол-во</th></tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="3" style="color:#888">Загрузка…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script src="/ozon-bulk-prices.js"></script>
+</body>
+</html>

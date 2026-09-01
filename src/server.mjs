@@ -1590,6 +1590,128 @@ app.post('/api/ozon/sync', (req, res) => {
     .finally(() => { ozonSyncInProgress = false; });
 });
 
+// ---- Ozon bulk prices ----
+
+function computeOzonPriceGroups() {
+  const rules = db.prepare('SELECT * FROM ozon_markup_rules WHERE active = 1').all();
+  const globalRule = rules.find(r => r.scope === 'global');
+  const byCat = new Map(rules.filter(r => r.scope === 'category').map(r => [r.ozon_category_id, r]));
+
+  const rows = db.prepare(`
+    SELECT p.product_id, p.offer_id, p.category_id, p.name,
+      pr.price AS current_price,
+      CASE WHEN pr.price > 0 AND pr.acquiring IS NOT NULL THEN ROUND(pr.acquiring*100.0/pr.price, 4) ELSE 1.0 END AS acq_pct,
+      c.fbs_commission_percent, c.fbs_deliv_amount, c.fbs_first_mile_max_amount, c.fbs_direct_flow_trans_max_amount,
+      sup.purchase_price
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    WHERE p.is_archived = 0
+  `).all();
+
+  const groups = { no_supplier: [], raise: [], lower: [], actual: [] };
+  for (const r of rows) {
+    if (!r.purchase_price || r.purchase_price <= 0 || r.fbs_commission_percent == null) {
+      groups.no_supplier.push({ offer_id: r.offer_id, name: r.name, current_price: r.current_price });
+      continue;
+    }
+    const rule = byCat.get(r.category_id) ?? globalRule;
+    if (!rule) { groups.no_supplier.push({ offer_id: r.offer_id, name: r.name, current_price: r.current_price }); continue; }
+
+    const acq_pct = r.acq_pct ?? 1.0;
+    const total_pct = r.fbs_commission_percent + acq_pct;
+    const fixed = (r.fbs_deliv_amount ?? 0) + (r.fbs_first_mile_max_amount ?? 0) + (r.fbs_direct_flow_trans_max_amount ?? 0);
+    const div = 1 - total_pct / 100;
+    if (div <= 0) { groups.no_supplier.push({ offer_id: r.offer_id, name: r.name, current_price: r.current_price }); continue; }
+
+    const proposed = Math.ceil((r.purchase_price * (1 + rule.margin_percent / 100) + fixed) / div);
+    const item = { offer_id: r.offer_id, name: r.name, current_price: r.current_price, proposed_price: proposed };
+
+    const cur = r.current_price;
+    if (cur == null || proposed > cur) groups.raise.push(item);
+    else if (proposed < cur) groups.lower.push(item);
+    else groups.actual.push(item);
+  }
+  return groups;
+}
+
+async function sendOzonGroup(group) {
+  const { ozon } = await import('./ozon/client.mjs');
+  const groups = computeOzonPriceGroups();
+  const items = (groups[group] ?? []).filter(i => i.proposed_price !== i.current_price);
+  if (!items.length) return { sent: 0, errors: 0, skipped: 0 };
+
+  const now = new Date().toISOString();
+  let sent = 0, errors = 0;
+  const logStmt = db.prepare('INSERT INTO ozon_price_updates (offer_id, old_price, new_price, status, error, sent_at) VALUES (?, ?, ?, ?, ?, ?)');
+
+  for (let i = 0; i < items.length; i += 1000) {
+    const chunk = items.slice(i, i + 1000);
+    const results = await ozon.updatePrices(chunk.map(r => ({ offer_id: r.offer_id, price: r.proposed_price })));
+    for (const r of results) {
+      const item = chunk.find(c => c.offer_id === r.offer_id);
+      logStmt.run(r.offer_id, item?.current_price ?? null, item?.proposed_price ?? null,
+        r.updated ? 'sent' : 'failed', r.errors?.length ? r.errors.join('; ') : null, now);
+      if (r.updated) sent++; else errors++;
+    }
+  }
+  console.log(`[OZON bulk] group=${group} sent=${sent} errors=${errors}`);
+  return { sent, errors, skipped: 0 };
+}
+
+function nextCronAt() {
+  const now = Date.now();
+  const periodMs = 15 * 60 * 1000;
+  return new Date(Math.ceil((now + 1000) / periodMs) * periodMs).toISOString();
+}
+
+app.get('/api/ozon/bulk-prices/stats', (req, res) => {
+  try {
+    const groups = computeOzonPriceGroups();
+    const auto = db.prepare('SELECT * FROM ozon_auto_price_settings').all();
+    const lastRuns = db.prepare(`
+      SELECT sent_at, status, COUNT(*) AS cnt
+      FROM ozon_price_updates
+      WHERE sent_at >= datetime('now', '-2 hours')
+      GROUP BY strftime('%Y-%m-%dT%H:%M', sent_at), status
+      ORDER BY sent_at DESC LIMIT 20
+    `).all();
+    res.json({
+      counts: {
+        no_supplier: groups.no_supplier.length,
+        raise: groups.raise.length,
+        lower: groups.lower.length,
+        actual: groups.actual.length,
+      },
+      auto: Object.fromEntries(auto.map(a => [a.price_group, !!a.enabled])),
+      nextRunAt: nextCronAt(),
+      lastRuns,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/ozon/bulk-prices/execute', async (req, res) => {
+  const { group } = req.body ?? {};
+  if (!['raise', 'lower'].includes(group)) return res.status(400).json({ error: 'group must be raise|lower' });
+  try {
+    const result = await sendOzonGroup(group);
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ozon/bulk-prices/auto', (req, res) => {
+  res.json(db.prepare('SELECT * FROM ozon_auto_price_settings').all());
+});
+
+app.put('/api/ozon/bulk-prices/auto', (req, res) => {
+  const { group, enabled } = req.body ?? {};
+  if (!['raise', 'lower'].includes(group)) return res.status(400).json({ error: 'invalid group' });
+  db.prepare('UPDATE ozon_auto_price_settings SET enabled=?, updated_at=? WHERE price_group=?')
+    .run(enabled ? 1 : 0, new Date().toISOString(), group);
+  res.json({ ok: true });
+});
+
 // ---- Cron ----
 const SYNC_CRON = process.env.SYNC_CRON ?? null;
 if (SYNC_CRON) {
@@ -1601,6 +1723,16 @@ if (SYNC_CRON) {
   });
   console.log(`Cron sync: ${SYNC_CRON}`);
 }
+
+// Ozon автоотправка цен — каждые 15 минут
+cron.schedule('*/15 * * * *', async () => {
+  const enabled = db.prepare('SELECT price_group FROM ozon_auto_price_settings WHERE enabled = 1').all();
+  if (!enabled.length) return;
+  for (const { price_group } of enabled) {
+    try { await sendOzonGroup(price_group); }
+    catch (e) { console.error(`[OZON auto] group=${price_group}:`, e.message); }
+  }
+});
 
 // Импорт фида поставщика: проверяем каждый час и импортим, если последнее успешное
 // чтение было давно (SUPPLIER_STALE_HOURS, дефолт 6). Раньше был '0 */6 * * *' —

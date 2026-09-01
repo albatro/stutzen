@@ -657,6 +657,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ozon_price_updates_sent  ON ozon_price_updates(sent_at DESC);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ozon_auto_price_settings (
+    price_group TEXT PRIMARY KEY,   -- 'raise' | 'lower'
+    enabled     INTEGER DEFAULT 0,
+    updated_at  TEXT NOT NULL
+  );
+`);
+for (const g of ['raise', 'lower']) {
+  db.prepare(`INSERT OR IGNORE INTO ozon_auto_price_settings (price_group, enabled, updated_at) VALUES (?, 0, ?)`)
+    .run(g, new Date().toISOString());
+}
+
 // ---- Ozon markup rules ----
 db.exec(`
   CREATE TABLE IF NOT EXISTS ozon_markup_rules (
