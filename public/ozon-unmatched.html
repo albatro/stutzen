@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Stutzen — Ozon без закупки</title>
+  <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_simple.min.css" rel="stylesheet">
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    .nav { font-size: 13px; margin-bottom: 8px; }
+    .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
+    .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
+    .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .bar input { padding: 6px 10px; font-size: 14px; width: 280px; }
+    button { background: #ffcc00; border: none; cursor: pointer; border-radius: 4px; padding: 6px 10px; font-size: 14px; }
+    button:disabled { background: #ddd; cursor: wait; }
+    .stats { font-size: 13px; color: #555; }
+    #table { height: calc(100vh - 120px); }
+    .thumb { width: 36px; height: 36px; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <h1>Ozon — товары без закупочной цены</h1>
+  <div class="nav">
+    <a href="/">Я.Маркет</a>
+    <a href="/ozon.html">Ozon</a>
+    <a href="/ozon-price.html">Цены</a>
+    <a href="/ozon-profit.html">Рентабельность</a>
+    <a href="/ozon-markup.html">Наценка</a>
+    <a href="/ozon-bulk-prices.html">Авто-цены</a>
+    <a href="/ozon-unmatched.html" class="active">Без закупки</a>
+  </div>
+  <div class="bar">
+    <input id="search" type="text" placeholder="поиск по SKU / названию">
+    <button id="refresh">Обновить</button>
+    <span id="stats" class="stats"></span>
+  </div>
+  <div id="table"></div>
+  <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const fmt = (v) => v == null ? '' : Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+
+    let allRows = [];
+
+    const table = new Tabulator('#table', {
+      data: [],
+      layout: 'fitColumns',
+      height: '100%',
+      placeholder: 'Загрузка…',
+      columns: [
+        {
+          title: 'Фото', field: 'image_url', width: 56, hozAlign: 'center', headerSort: false,
+          formatter: (cell) => {
+            const v = cell.getValue();
+            return v ? `<img class="thumb" src="${v}" loading="lazy">` : '';
+          },
+        },
+        {
+          title: 'SKU (offer_id)', field: 'offer_id', width: 180,
+          formatter: (cell) => `<b>${cell.getValue() ?? ''}</b>`,
+        },
+        { title: 'Название', field: 'name', minWidth: 250 },
+        {
+          title: 'Текущая цена', field: 'current_price', width: 130, hozAlign: 'right',
+          formatter: (cell) => {
+            const v = cell.getValue();
+            return v ? `<b>${fmt(v)} ₽</b>` : '<span style="color:#aaa">нет</span>';
+          },
+        },
+        {
+          title: 'В фиде поставщика', field: 'sup_offer_id', width: 160, hozAlign: 'center',
+          formatter: (cell) => cell.getValue()
+            ? `<span style="color:#1a7a3a;font-weight:600">✓ есть (нет цены)</span>`
+            : `<span style="color:#c00">✗ нет</span>`,
+        },
+      ],
+    });
+
+    function applySearch() {
+      const q = ($('#search').value ?? '').trim().toLowerCase();
+      const filtered = q
+        ? allRows.filter(r =>
+            (r.offer_id ?? '').toLowerCase().includes(q) ||
+            (r.name ?? '').toLowerCase().includes(q))
+        : allRows;
+      table.setData(filtered);
+      $('#stats').textContent = `Показано: ${filtered.length} из ${allRows.length}`;
+    }
+
+    async function load() {
+      $('#refresh').disabled = true;
+      $('#stats').textContent = 'Загрузка…';
+      table.setData([]);
+      try {
+        const data = await fetch('/api/ozon/unmatched?limit=5000').then(r => r.json());
+        allRows = data.rows ?? [];
+        applySearch();
+      } catch (e) {
+        $('#stats').textContent = 'Ошибка: ' + e.message;
+      } finally {
+        $('#refresh').disabled = false;
+      }
+    }
+
+    let searchTimer;
+    $('#search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(applySearch, 200);
+    });
+    $('#refresh').addEventListener('click', load);
+
+    load();
+  </script>
+</body>
+</html>

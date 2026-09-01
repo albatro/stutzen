@@ -1444,9 +1444,9 @@ app.delete('/api/ozon/markup-rules/:id', (req, res) => {
 
 // ---- Ozon ценовые предложения ----
 app.get('/api/ozon/unmatched', (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 5000);
   const rows = db.prepare(`
-    SELECT p.product_id, p.offer_id, p.name, p.category_name,
+    SELECT p.product_id, p.offer_id, p.name, p.category_name, p.image_url,
            pr.price AS current_price,
            sup.purchase_price, sup.offer_id AS sup_offer_id
     FROM ozon_products p
