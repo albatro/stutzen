@@ -1211,6 +1211,10 @@ app.get('/api/ozon/products', (req, res) => { try {
       c.fbs_commission_percent, c.fbs_first_mile_amount, c.fbs_first_mile_max_amount, c.fbs_deliv_amount,
       c.fbs_direct_flow_trans_max_amount, c.fbs_direct_flow_trans_min_amount, c.fbs_return_flow_amount,
       c.sales_percent_rfbs, c.sales_percent_fbp,
+      -- Процент эквайринга (для расчёта новой цены)
+      CASE WHEN pr.price > 0 AND pr.acquiring IS NOT NULL THEN
+        ROUND(pr.acquiring * 100.0 / pr.price, 4)
+      ELSE NULL END AS acquiring_percent,
       -- Чистая выручка FBO: цена − комиссия% − эквайринг − доставка − логистика(max)
       CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL THEN
         ROUND(

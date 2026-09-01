@@ -31,6 +31,7 @@ function buildNetHtml(data, schema) {
   const commPct  = isFbo ? data.fbo_commission_percent : data.fbs_commission_percent;
   const commAmt  = price * (commPct || 0) / 100;
   const acq      = data.acquiring || 0;
+  const acqPct   = data.acquiring_percent != null ? data.acquiring_percent : (price > 0 ? Math.round(acq / price * 10000) / 100 : null);
   const deliv    = isFbo ? (data.fbo_deliv_amount || 0) : (data.fbs_deliv_amount || 0);
   const logMax   = isFbo ? (data.fbo_direct_flow_trans_max_amount || 0) : (data.fbs_direct_flow_trans_max_amount || 0);
   const mile     = isFbo ? 0 : (data.fbs_first_mile_max_amount || 0);
@@ -42,7 +43,7 @@ function buildNetHtml(data, schema) {
 
   let html = tr('Цена покупателя', price, '');
   html += tr(`Комиссия ${commPct ?? '?'}%`, commAmt, '−');
-  html += tr('Эквайринг', acq, '−');
+  html += tr(`Эквайринг${acqPct != null ? ' ' + acqPct + '%' : ''}`, acq, '−');
   html += tr('Доставка до покупателя', deliv, '−');
   if (!isFbo) html += tr('Первая миля (макс)', mile, '−');
   html += tr(`Логистика Ozon (макс)`, logMax, '−');
