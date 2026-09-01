@@ -1395,6 +1395,146 @@ app.get('/api/ozon/debug', async (req, res) => {
   }
 });
 
+// ---- Ozon правила наценки ----
+app.get('/api/ozon/markup-rules', (req, res) => {
+  const rules = db.prepare(`
+    SELECT r.*, oz_cat.category_name
+    FROM ozon_markup_rules r
+    LEFT JOIN (SELECT DISTINCT category_id, category_name FROM ozon_products WHERE category_id IS NOT NULL) oz_cat
+      ON oz_cat.category_id = r.ozon_category_id
+    ORDER BY r.scope ASC, r.ozon_category_id ASC
+  `).all();
+  res.json(rules);
+});
+
+app.post('/api/ozon/markup-rules', (req, res) => {
+  const { scope, ozon_category_id, margin_percent, min_margin_amount, active } = req.body ?? {};
+  if (scope !== 'global' && scope !== 'category') return res.status(400).json({ error: 'scope must be global|category' });
+  if (scope === 'category' && !ozon_category_id) return res.status(400).json({ error: 'ozon_category_id required' });
+  if (typeof margin_percent !== 'number') return res.status(400).json({ error: 'margin_percent must be number' });
+  try {
+    const now = new Date().toISOString();
+    const marginN = Number(margin_percent);
+    const minMarginN = min_margin_amount == null ? null : Number(min_margin_amount);
+    const activeN = active ? 1 : 0;
+    if (scope === 'global') {
+      db.prepare(`
+        UPDATE ozon_markup_rules SET margin_percent=?, min_margin_amount=?, active=?, updated_at=? WHERE scope='global'
+      `).run(marginN, minMarginN, activeN, now);
+    } else {
+      db.prepare(`
+        INSERT INTO ozon_markup_rules (scope, ozon_category_id, margin_percent, min_margin_amount, active, updated_at)
+        VALUES ('category', ?, ?, ?, ?, ?)
+        ON CONFLICT(scope, ozon_category_id) DO UPDATE SET
+          margin_percent=excluded.margin_percent, min_margin_amount=excluded.min_margin_amount,
+          active=excluded.active, updated_at=excluded.updated_at
+      `).run(Number(ozon_category_id), marginN, minMarginN, activeN, now);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/ozon/markup-rules/:id', (req, res) => {
+  const row = db.prepare(`SELECT scope FROM ozon_markup_rules WHERE id = ?`).get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'not found' });
+  if (row.scope === 'global') return res.status(400).json({ error: 'нельзя удалить глобальное правило' });
+  db.prepare(`DELETE FROM ozon_markup_rules WHERE id = ?`).run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+// ---- Ozon ценовые предложения ----
+app.get('/api/ozon/price-proposals', (req, res) => { try {
+  const search = (req.query.search ?? '').toString().trim();
+  const category = req.query.category ? Number(req.query.category) : null;
+  const onlyMatched = req.query.matched === '1';
+
+  const rules = db.prepare('SELECT * FROM ozon_markup_rules WHERE active = 1').all();
+  const globalRule = rules.find(r => r.scope === 'global');
+  const byCat = new Map();
+  for (const r of rules) if (r.scope === 'category') byCat.set(r.ozon_category_id, r);
+
+  const where = ['1=1'];
+  const params = [];
+  if (search) {
+    where.push(`(p.offer_id LIKE ? OR p.name LIKE ?)`);
+    const q = `%${search}%`; params.push(q, q);
+  }
+  if (category) { where.push(`p.category_id = ?`); params.push(category); }
+  if (onlyMatched) { where.push(`sup.purchase_price IS NOT NULL AND sup.purchase_price > 0`); }
+
+  const rows = db.prepare(`
+    SELECT
+      p.product_id, p.offer_id, p.name, p.category_id, p.category_name, p.image_url,
+      pr.price AS current_price, pr.acquiring,
+      CASE WHEN pr.price > 0 AND pr.acquiring IS NOT NULL
+        THEN ROUND(pr.acquiring * 100.0 / pr.price, 4) ELSE 1.0 END AS acq_pct,
+      c.fbs_commission_percent, c.fbs_deliv_amount, c.fbs_first_mile_max_amount,
+      c.fbs_direct_flow_trans_max_amount,
+      c.fbo_commission_percent, c.fbo_deliv_amount, c.fbo_direct_flow_trans_max_amount,
+      sup.purchase_price, sup.vendor
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY p.offer_id
+  `).all(...params);
+
+  const result = [];
+  for (const r of rows) {
+    if (!r.purchase_price || r.purchase_price <= 0) continue;
+    const rule = byCat.get(r.category_id) ?? globalRule;
+    if (!rule) continue;
+
+    const margin_pct = rule.margin_percent;
+    const acq_pct = r.acq_pct ?? 1.0;
+    const target_net = r.purchase_price * (1 + margin_pct / 100);
+
+    let proposed_fbs = null, actual_net_fbs = null, actual_margin_fbs = null, actual_margin_pct_fbs = null;
+    if (r.fbs_commission_percent != null) {
+      const total_pct = r.fbs_commission_percent + acq_pct;
+      const fixed = (r.fbs_deliv_amount ?? 0) + (r.fbs_first_mile_max_amount ?? 0) + (r.fbs_direct_flow_trans_max_amount ?? 0);
+      const div = 1 - total_pct / 100;
+      if (div > 0) {
+        proposed_fbs = Math.ceil((target_net + fixed) / div);
+        actual_net_fbs = Math.round((proposed_fbs * (1 - total_pct / 100) - fixed) * 100) / 100;
+        actual_margin_fbs = Math.round((actual_net_fbs - r.purchase_price) * 100) / 100;
+        actual_margin_pct_fbs = Math.round(actual_margin_fbs / r.purchase_price * 1000) / 10;
+      }
+    }
+
+    let proposed_fbo = null, actual_net_fbo = null, actual_margin_fbo = null, actual_margin_pct_fbo = null;
+    if (r.fbo_commission_percent != null) {
+      const total_pct = r.fbo_commission_percent + acq_pct;
+      const fixed = (r.fbo_deliv_amount ?? 0) + (r.fbo_direct_flow_trans_max_amount ?? 0);
+      const div = 1 - total_pct / 100;
+      if (div > 0) {
+        proposed_fbo = Math.ceil((target_net + fixed) / div);
+        actual_net_fbo = Math.round((proposed_fbo * (1 - total_pct / 100) - fixed) * 100) / 100;
+        actual_margin_fbo = Math.round((actual_net_fbo - r.purchase_price) * 100) / 100;
+        actual_margin_pct_fbo = Math.round(actual_margin_fbo / r.purchase_price * 1000) / 10;
+      }
+    }
+
+    const delta_fbs = proposed_fbs != null && r.current_price != null ? Math.round((proposed_fbs - r.current_price) * 100) / 100 : null;
+    const delta_pct_fbs = delta_fbs != null && r.current_price > 0 ? Math.round(delta_fbs / r.current_price * 1000) / 10 : null;
+
+    result.push({
+      product_id: r.product_id, offer_id: r.offer_id, name: r.name,
+      category_name: r.category_name, image_url: r.image_url, vendor: r.vendor,
+      purchase_price: r.purchase_price, current_price: r.current_price,
+      margin_percent: margin_pct, acq_pct,
+      fbs_commission_percent: r.fbs_commission_percent,
+      fbo_commission_percent: r.fbo_commission_percent,
+      proposed_fbs, actual_net_fbs, actual_margin_fbs, actual_margin_pct_fbs,
+      proposed_fbo, actual_net_fbo, actual_margin_fbo, actual_margin_pct_fbo,
+      delta_fbs, delta_pct_fbs,
+    });
+  }
+
+  res.json({ total: result.length, rows: result });
+} catch (e) { res.status(500).json({ error: e.message }); } });
+
 app.post('/api/ozon/sync', (req, res) => {
   if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
   ozonSyncInProgress = true;

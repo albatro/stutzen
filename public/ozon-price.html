@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Stutzen — Ozon рентабельность</title>
+  <title>Stutzen — цены Ozon</title>
   <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_simple.min.css" rel="stylesheet">
   <style>
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
@@ -42,14 +42,14 @@
     .gear-panel .gear-actions { display: flex; gap: 8px; border-top: 1px solid #eee; padding-top: 8px; margin-top: 6px; }
     .gear-panel .gear-actions button { background: #f0f0f0; font-size: 12px; padding: 4px 8px; }
 
-    /* Расшифровка маржи */
+    /* Tooltip */
     .calc-tip {
       display: none; position: fixed;
       background: #1e2433; color: #dde1ef;
       border-radius: 8px; padding: 12px 16px;
       font-size: 12px; line-height: 1.85;
       pointer-events: none; z-index: 9999;
-      box-shadow: 0 6px 28px rgba(0,0,0,.45); min-width: 280px;
+      box-shadow: 0 6px 28px rgba(0,0,0,.45); min-width: 290px;
     }
     .calc-tip .tip-row { display: flex; justify-content: space-between; gap: 28px; }
     .calc-tip .tip-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -61,11 +61,11 @@
   </style>
 </head>
 <body>
-  <h1>Ozon — рентабельность</h1>
+  <h1>Ozon — ценовые предложения</h1>
   <div style="font-size:13px;margin-bottom:8px;">
     <a href="/" style="color:#06c;text-decoration:none;margin-right:12px;">Я.Маркет</a>
     <a href="/supplier.html" style="color:#06c;text-decoration:none;margin-right:12px;">Поставщик</a>
-    <a href="/markup.html" style="color:#06c;text-decoration:none;margin-right:12px;">Наценка</a>
+    <a href="/markup.html" style="color:#06c;text-decoration:none;margin-right:12px;">Наценка ЯМ</a>
     <a href="/price-sync.html" style="color:#06c;text-decoration:none;margin-right:12px;">Сверка цен</a>
     <a href="/sales.html" style="color:#06c;text-decoration:none;margin-right:12px;">Продажи</a>
     <a href="/cancellations.html" style="color:#06c;text-decoration:none;margin-right:12px;">Отмены</a>
@@ -74,15 +74,15 @@
     <a href="/supplier-feed.html" style="color:#06c;text-decoration:none;margin-right:12px;">Входящий фид</a>
     <a href="/events.html" style="color:#06c;text-decoration:none;margin-right:12px;">События</a>
     <a href="/ozon.html" style="color:#06c;text-decoration:none;margin-right:12px;">Ozon</a>
-    <a href="/ozon-profit.html" style="color:#222;font-weight:bold;text-decoration:underline;">Рентабельность</a>
-    <a href="/ozon-markup.html" style="color:#06c;text-decoration:none;margin-left:12px;">Наценка</a>
-    <a href="/ozon-price.html" style="color:#06c;text-decoration:none;margin-left:12px;">Цены</a>
+    <a href="/ozon-profit.html" style="color:#06c;text-decoration:none;margin-right:12px;">Рентабельность</a>
+    <a href="/ozon-markup.html" style="color:#06c;text-decoration:none;margin-right:12px;">Наценка</a>
+    <a href="/ozon-price.html" style="color:#222;font-weight:bold;text-decoration:underline;">Цены</a>
   </div>
   <div class="bar">
     <input id="search" type="text" placeholder="поиск по SKU / названию">
     <select id="category"><option value="">Все категории</option></select>
     <label style="padding:0;gap:6px;">
-      <input id="only-matched" type="checkbox"> Только с закупочной ценой
+      <input id="only-matched" type="checkbox" checked> Только с закупочной ценой
     </label>
     <button id="refresh">Обновить</button>
     <span class="gear-wrap">
@@ -93,6 +93,6 @@
   </div>
   <div id="table"></div>
   <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
-  <script src="/ozon-profit.js"></script>
+  <script src="/ozon-price.js"></script>
 </body>
 </html>

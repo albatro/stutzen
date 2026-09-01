@@ -643,6 +643,28 @@ export function upsertOzonCommission(c) {
   );
 }
 
+// ---- Ozon markup rules ----
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ozon_markup_rules (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope            TEXT NOT NULL,       -- 'global' | 'category'
+    ozon_category_id INTEGER,             -- для scope='category' — из ozon_products.category_id
+    margin_percent   REAL NOT NULL,
+    min_margin_amount REAL,
+    active           INTEGER DEFAULT 1,
+    updated_at       TEXT NOT NULL,
+    UNIQUE(scope, ozon_category_id)
+  );
+`);
+
+{
+  const hasOzonGlobal = db.prepare(`SELECT id FROM ozon_markup_rules WHERE scope='global'`).get();
+  if (!hasOzonGlobal) {
+    db.prepare(`INSERT INTO ozon_markup_rules (scope, margin_percent, min_margin_amount, active, updated_at)
+                VALUES ('global', 30, NULL, 1, ?)`).run(new Date().toISOString());
+  }
+}
+
 export function startOzonSyncRun() {
   const r = db.prepare(`INSERT INTO ozon_sync_runs (started_at, status) VALUES (?, 'running')`).run(new Date().toISOString());
   return Number(r.lastInsertRowid);
