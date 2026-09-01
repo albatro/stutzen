@@ -1352,14 +1352,18 @@ app.get('/api/ozon/debug', async (req, res) => {
         })
       : null;
 
-    // 4b. Склады продавца
-    const warehouses = await ozonFetch('POST', '/v1/warehouse/list', {}).catch(e => ({ error: e.message }));
+    // 4b. Склады продавца (разные версии API)
+    const warehouses = {
+      v2: await ozonFetch('POST', '/v2/posting/fbs/warehouse/list', {}).catch(e => ({ error: e.message })),
+      v1_new: await ozonFetch('GET', '/v1/supplier/warehouse', undefined).catch(e => ({ error: e.message })),
+    };
 
-    // 4c. FBS остатки через stocks-by-warehouse/fbs (нужны fbs_sku)
-    const fbs_skus = (list?.result?.items ?? []).map(i => i.fbs_sku).filter(Boolean);
-    const fbsStocks = fbs_skus.length
-      ? await ozonFetch('POST', '/v3/product/info/stocks-by-warehouse/fbs', { fbs_sku_ids: fbs_skus.slice(0, 5) }).catch(e => ({ error: e.message }))
-      : { note: 'нет fbs_sku в /v3/product/list', sample_item: list?.result?.items?.[0] };
+    // 4c. FBS остатки через v3 stocks (альтернатива v4)
+    const fbsStocks = productIds.length
+      ? await ozonFetch('POST', '/v3/product/info/stocks', {
+          filter: { product_id: productIds, visibility: 'ALL' }, limit: 2, offset: 0,
+        }).catch(e => ({ error: e.message }))
+      : null;
 
     // 5. Диагностика БД: количество строк и образец реальных колонок (не raw_json)
     const dbStats = {
