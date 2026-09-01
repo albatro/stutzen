@@ -97,12 +97,16 @@ try { db.exec('ALTER TABLE supplier_imports ADD COLUMN file_size_bytes INTEGER')
 try { db.exec('ALTER TABLE feed_generations ADD COLUMN file_size_bytes INTEGER'); } catch {}
 try { db.exec('ALTER TABLE supplier_offers ADD COLUMN step_quantity INTEGER'); } catch {}
 try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbo_return_flow_amount REAL'); } catch {}
-try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbo_return_flow_trans_max_amount REAL'); } catch {}
-try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbo_return_flow_trans_min_amount REAL'); } catch {}
 try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_first_mile_max_amount REAL'); } catch {}
 try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_return_flow_amount REAL'); } catch {}
-try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_return_flow_trans_max_amount REAL'); } catch {}
-try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_return_flow_trans_min_amount REAL'); } catch {}
+// direct_flow = стоимость прямой доставки (фулфилмент/транспортировка), ранее ошибочно назывались return_flow_trans
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbo_direct_flow_trans_max_amount REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbo_direct_flow_trans_min_amount REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_direct_flow_trans_max_amount REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN fbs_direct_flow_trans_min_amount REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN sales_percent_rfbs REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_commissions ADD COLUMN sales_percent_fbp REAL'); } catch {}
+try { db.exec('ALTER TABLE ozon_prices ADD COLUMN acquiring REAL'); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS supplier_offers (
@@ -568,17 +572,18 @@ export function upsertOzonProduct(p) {
 
 export function upsertOzonPrice(p) {
   db.prepare(`
-    INSERT INTO ozon_prices (product_id, price, old_price, min_price, marketing_price, currency, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO ozon_prices (product_id, price, old_price, min_price, marketing_price, acquiring, currency, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(product_id) DO UPDATE SET
       price = excluded.price,
       old_price = excluded.old_price,
       min_price = excluded.min_price,
       marketing_price = excluded.marketing_price,
+      acquiring = excluded.acquiring,
       currency = excluded.currency,
       updated_at = excluded.updated_at
   `).run(p.product_id, p.price ?? null, p.old_price ?? null, p.min_price ?? null,
-         p.marketing_price ?? null, p.currency ?? 'RUB', p.updated_at);
+         p.marketing_price ?? null, p.acquiring ?? null, p.currency ?? 'RUB', p.updated_at);
 }
 
 export function deleteOzonStocksForProduct(productId) {
@@ -603,33 +608,37 @@ export function upsertOzonCommission(c) {
     INSERT INTO ozon_commissions (
       product_id,
       fbo_commission_percent, fbo_fulfillment_amount, fbo_deliv_amount,
-      fbo_return_flow_amount, fbo_return_flow_trans_max_amount, fbo_return_flow_trans_min_amount,
+      fbo_direct_flow_trans_max_amount, fbo_direct_flow_trans_min_amount, fbo_return_flow_amount,
       fbs_commission_percent, fbs_first_mile_amount, fbs_first_mile_max_amount, fbs_deliv_amount,
-      fbs_return_flow_amount, fbs_return_flow_trans_max_amount, fbs_return_flow_trans_min_amount,
+      fbs_direct_flow_trans_max_amount, fbs_direct_flow_trans_min_amount, fbs_return_flow_amount,
+      sales_percent_rfbs, sales_percent_fbp,
       raw_json, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(product_id) DO UPDATE SET
       fbo_commission_percent = excluded.fbo_commission_percent,
       fbo_fulfillment_amount = excluded.fbo_fulfillment_amount,
       fbo_deliv_amount = excluded.fbo_deliv_amount,
+      fbo_direct_flow_trans_max_amount = excluded.fbo_direct_flow_trans_max_amount,
+      fbo_direct_flow_trans_min_amount = excluded.fbo_direct_flow_trans_min_amount,
       fbo_return_flow_amount = excluded.fbo_return_flow_amount,
-      fbo_return_flow_trans_max_amount = excluded.fbo_return_flow_trans_max_amount,
-      fbo_return_flow_trans_min_amount = excluded.fbo_return_flow_trans_min_amount,
       fbs_commission_percent = excluded.fbs_commission_percent,
       fbs_first_mile_amount = excluded.fbs_first_mile_amount,
       fbs_first_mile_max_amount = excluded.fbs_first_mile_max_amount,
       fbs_deliv_amount = excluded.fbs_deliv_amount,
+      fbs_direct_flow_trans_max_amount = excluded.fbs_direct_flow_trans_max_amount,
+      fbs_direct_flow_trans_min_amount = excluded.fbs_direct_flow_trans_min_amount,
       fbs_return_flow_amount = excluded.fbs_return_flow_amount,
-      fbs_return_flow_trans_max_amount = excluded.fbs_return_flow_trans_max_amount,
-      fbs_return_flow_trans_min_amount = excluded.fbs_return_flow_trans_min_amount,
+      sales_percent_rfbs = excluded.sales_percent_rfbs,
+      sales_percent_fbp = excluded.sales_percent_fbp,
       raw_json = excluded.raw_json,
       updated_at = excluded.updated_at
   `).run(
     c.product_id,
     c.fbo_commission_percent ?? null, c.fbo_fulfillment_amount ?? null, c.fbo_deliv_amount ?? null,
-    c.fbo_return_flow_amount ?? null, c.fbo_return_flow_trans_max_amount ?? null, c.fbo_return_flow_trans_min_amount ?? null,
+    c.fbo_direct_flow_trans_max_amount ?? null, c.fbo_direct_flow_trans_min_amount ?? null, c.fbo_return_flow_amount ?? null,
     c.fbs_commission_percent ?? null, c.fbs_first_mile_amount ?? null, c.fbs_first_mile_max_amount ?? null, c.fbs_deliv_amount ?? null,
-    c.fbs_return_flow_amount ?? null, c.fbs_return_flow_trans_max_amount ?? null, c.fbs_return_flow_trans_min_amount ?? null,
+    c.fbs_direct_flow_trans_max_amount ?? null, c.fbs_direct_flow_trans_min_amount ?? null, c.fbs_return_flow_amount ?? null,
+    c.sales_percent_rfbs ?? null, c.sales_percent_fbp ?? null,
     c.raw_json ?? null, c.updated_at,
   );
 }

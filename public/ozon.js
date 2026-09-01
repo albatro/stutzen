@@ -45,19 +45,19 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Мин. цена, ₽', field: 'min_price', width: 110, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Эквайринг, ₽', field: 'acquiring', width: 110, hozAlign: 'right',
+      formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Остаток', field: 'stock_total', width: 90, hozAlign: 'right' },
     { title: 'Резерв', field: 'stock_reserved', width: 80, hozAlign: 'right' },
     { title: 'Комиссия FBO, %', field: 'fbo_commission_percent', width: 130, hozAlign: 'right',
       formatter: (cell) => fmtPct(cell.getValue()) },
-    { title: 'Фулфилмент FBO, ₽', field: 'fbo_fulfillment_amount', width: 140, hozAlign: 'right',
+    { title: 'Доставка FBO, ₽', field: 'fbo_deliv_amount', width: 120, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Доставка FBO, ₽', field: 'fbo_deliv_amount', width: 130, hozAlign: 'right',
+    { title: 'Логистика FBO мин, ₽', field: 'fbo_direct_flow_trans_min_amount', width: 150, hozAlign: 'right',
+      formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Логистика FBO макс, ₽', field: 'fbo_direct_flow_trans_max_amount', width: 150, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Возврат FBO, ₽', field: 'fbo_return_flow_amount', width: 120, hozAlign: 'right',
-      formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Перемещение возврата FBO мин, ₽', field: 'fbo_return_flow_trans_min_amount', width: 170, hozAlign: 'right',
-      formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Перемещение возврата FBO макс, ₽', field: 'fbo_return_flow_trans_max_amount', width: 170, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Комиссия FBS, %', field: 'fbs_commission_percent', width: 130, hozAlign: 'right',
       formatter: (cell) => fmtPct(cell.getValue()) },
@@ -65,14 +65,18 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Первая миля FBS макс, ₽', field: 'fbs_first_mile_max_amount', width: 150, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Доставка FBS, ₽', field: 'fbs_deliv_amount', width: 130, hozAlign: 'right',
+    { title: 'Доставка FBS, ₽', field: 'fbs_deliv_amount', width: 120, hozAlign: 'right',
+      formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Логистика FBS мин, ₽', field: 'fbs_direct_flow_trans_min_amount', width: 150, hozAlign: 'right',
+      formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Логистика FBS макс, ₽', field: 'fbs_direct_flow_trans_max_amount', width: 150, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Возврат FBS, ₽', field: 'fbs_return_flow_amount', width: 120, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Перемещение возврата FBS мин, ₽', field: 'fbs_return_flow_trans_min_amount', width: 170, hozAlign: 'right',
-      formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Перемещение возврата FBS макс, ₽', field: 'fbs_return_flow_trans_max_amount', width: 170, hozAlign: 'right',
-      formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Комиссия RFBS, %', field: 'sales_percent_rfbs', width: 130, hozAlign: 'right',
+      formatter: (cell) => fmtPct(cell.getValue()) },
+    { title: 'Комиссия FBP, %', field: 'sales_percent_fbp', width: 120, hozAlign: 'right',
+      formatter: (cell) => fmtPct(cell.getValue()) },
     { title: 'Статус', field: 'status', width: 140 },
     { title: 'Обновлено', field: 'updated_at', width: 150, sorter: 'string',
       formatter: (cell) => {
@@ -134,6 +138,14 @@ function buildGearPanel() {
 table.on('tableBuilt', () => {
   applyVisibility();
   buildGearPanel();
+});
+
+table.on('dataLoaded', () => {
+  // Пересобираем панель при первой загрузке данных на случай если
+  // tableBuilt сработал до того как Tabulator зарегистрировал колонки
+  if (!document.querySelector('.gear-panel')?.children.length) {
+    buildGearPanel();
+  }
 });
 
 document.querySelector('.gear-btn')?.addEventListener('click', () => {
