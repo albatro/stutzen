@@ -106,6 +106,28 @@
       font-size: 12px;
       padding: 4px 8px;
     }
+
+    /* Расшифровка «К перечислению» */
+    .calc-tip {
+      display: none;
+      position: fixed;
+      background: #1e2433;
+      color: #dde1ef;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      line-height: 1.85;
+      pointer-events: none;
+      z-index: 9999;
+      box-shadow: 0 6px 28px rgba(0,0,0,.45);
+      min-width: 270px;
+    }
+    .calc-tip .tip-row { display: flex; justify-content: space-between; gap: 28px; }
+    .calc-tip .tip-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .calc-tip .tip-sep { border-top: 1px solid rgba(255,255,255,.15); margin: 6px 0; }
+    .calc-tip .tip-total { font-weight: 700; font-size: 13px; }
+    .calc-tip .tip-pos .tip-val { color: #4ade80; }
+    .calc-tip .tip-neg .tip-val { color: #f87171; }
   </style>
 </head>
 <body>

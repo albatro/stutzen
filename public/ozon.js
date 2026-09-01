@@ -4,11 +4,57 @@ const fmtPct = (v) => v == null ? '' : `${v}%`;
 const fmtNet = (cell) => {
   const v = cell.getValue();
   if (v == null) return '';
-  const s = Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  cell.getElement().style.color = v < 0 ? '#c00' : v === 0 ? '#888' : '#1a7a3a';
-  cell.getElement().style.fontWeight = '600';
-  return s;
+  const el = cell.getElement();
+  el.style.color = v < 0 ? '#c00' : v === 0 ? '#888' : '#1a7a3a';
+  el.style.fontWeight = '600';
+  el.style.cursor = 'help';
+  return Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
+
+// ---- Плавающая расшифровка для колонок «К перечислению» ----
+const _tipEl = document.createElement('div');
+_tipEl.className = 'calc-tip';
+document.body.appendChild(_tipEl);
+
+document.addEventListener('mousemove', (e) => {
+  if (_tipEl.style.display === 'none') return;
+  const x = Math.min(e.clientX + 18, window.innerWidth - _tipEl.offsetWidth - 8);
+  _tipEl.style.left = x + 'px';
+  _tipEl.style.top = Math.max(e.clientY - 10, 4) + 'px';
+});
+
+function buildNetHtml(data, schema) {
+  const price = data.price;
+  if (price == null) return null;
+  const isFbo = schema === 'fbo';
+
+  const commPct  = isFbo ? data.fbo_commission_percent : data.fbs_commission_percent;
+  const commAmt  = price * (commPct || 0) / 100;
+  const acq      = data.acquiring || 0;
+  const deliv    = isFbo ? (data.fbo_deliv_amount || 0) : (data.fbs_deliv_amount || 0);
+  const logMax   = isFbo ? (data.fbo_direct_flow_trans_max_amount || 0) : (data.fbs_direct_flow_trans_max_amount || 0);
+  const mile     = isFbo ? 0 : (data.fbs_first_mile_max_amount || 0);
+  const net      = price - commAmt - acq - deliv - mile - logMax;
+
+  const r = (v) => Math.abs(v).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const tr = (label, val, sign) =>
+    `<div class="tip-row"><span>${label}</span><span class="tip-val">${sign}${r(val)} ₽</span></div>`;
+
+  let html = tr('Цена покупателя', price, '');
+  html += tr(`Комиссия ${commPct ?? '?'}%`, commAmt, '−');
+  html += tr('Эквайринг', acq, '−');
+  html += tr('Доставка до покупателя', deliv, '−');
+  if (!isFbo) html += tr('Первая миля (макс)', mile, '−');
+  html += tr(`Логистика Ozon (макс)`, logMax, '−');
+  html += `<div class="tip-sep"></div>`;
+  html += `<div class="tip-row tip-total ${net < 0 ? 'tip-neg' : 'tip-pos'}">
+    <span>К перечислению</span>
+    <span class="tip-val">${net < 0 ? '−' : ''}${r(net)} ₽</span>
+  </div>`;
+  return html;
+}
+
+const _NET_FIELDS = new Set(['fbo_net', 'fbs_net']);
 
 const table = new Tabulator('#table', {
   layout: 'fitDataStretch',
@@ -55,12 +101,8 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Эквайринг, ₽', field: 'acquiring', width: 110, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
-    { title: 'Выручка FBS, ₽', field: 'fbs_net', width: 130, hozAlign: 'right', frozen: false,
-      formatter: fmtNet,
-      tooltip: 'Цена − комиссия FBS% − эквайринг − доставка − первая миля(макс) − логистика(макс)' },
-    { title: 'Выручка FBO, ₽', field: 'fbo_net', width: 130, hozAlign: 'right',
-      formatter: fmtNet,
-      tooltip: 'Цена − комиссия FBO% − эквайринг − доставка − логистика(макс)' },
+    { title: 'К перечислению FBS, ₽', field: 'fbs_net', width: 150, hozAlign: 'right', formatter: fmtNet },
+    { title: 'К перечислению FBO, ₽', field: 'fbo_net', width: 150, hozAlign: 'right', formatter: fmtNet },
     { title: 'Остаток', field: 'stock_total', width: 90, hozAlign: 'right' },
     { title: 'Резерв', field: 'stock_reserved', width: 80, hozAlign: 'right' },
     { title: 'Комиссия FBO, %', field: 'fbo_commission_percent', width: 130, hozAlign: 'right',
@@ -155,11 +197,22 @@ table.on('tableBuilt', () => {
 });
 
 table.on('dataLoaded', () => {
-  // Пересобираем панель при первой загрузке данных на случай если
-  // tableBuilt сработал до того как Tabulator зарегистрировал колонки
   if (!document.querySelector('.gear-panel')?.children.length) {
     buildGearPanel();
   }
+});
+
+table.on('cellMouseEnter', (_e, cell) => {
+  const field = cell.getColumn().getField();
+  if (!_NET_FIELDS.has(field)) return;
+  const html = buildNetHtml(cell.getRow().getData(), field === 'fbo_net' ? 'fbo' : 'fbs');
+  if (!html) return;
+  _tipEl.innerHTML = html;
+  _tipEl.style.display = 'block';
+});
+
+table.on('cellMouseLeave', (_e, cell) => {
+  if (_NET_FIELDS.has(cell.getColumn().getField())) _tipEl.style.display = 'none';
 });
 
 document.querySelector('.gear-btn')?.addEventListener('click', (e) => {
