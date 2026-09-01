@@ -125,11 +125,12 @@ function miniIco(s) {
   return '—';
 }
 
-function overallClass(supplierRows, genRows) {
+function overallClass(supplierRows, genRows, syncRows) {
   const sLast = supplierRows[0];
   const gLast = genRows[0];
-  if (!sLast && !gLast) return 's-warn';
-  const all = [sLast?.status, gLast?.status].filter(Boolean);
+  const yLast = syncRows[0];
+  if (!sLast && !gLast && !yLast) return 's-warn';
+  const all = [sLast?.status, gLast?.status, yLast?.status].filter(Boolean);
   if (all.some(s => s === 'error'))   return 's-err';
   if (all.some(s => s === 'running')) return 's-run';
 
@@ -183,15 +184,32 @@ function buildGenRows(rows) {
   }).join('');
 }
 
-function renderDash(supplierRows, genRows, schedule) {
-  _dashData = { supplierRows, genRows, schedule };
+function buildSyncRows(rows) {
+  if (!rows.length) return '<tr><td colspan="4" style="color:#aaa">нет данных</td></tr>';
+  return rows.slice(0, 4).map(r => {
+    const isErr = r.status === 'error' || r.status === 'failed';
+    const msg = r.error_message || r.details;
+    const errText = msg
+      ? `<td class="etxt" title="${escapeHtml(msg)}">${escapeHtml(msg.slice(0, 80))}</td>` : '<td></td>';
+    return `<tr${isErr ? ' class="erow"' : ''}>
+      <td>${miniTime(r.finished_at ?? r.started_at)}</td>
+      <td>${miniIco(r.status === 'failed' ? 'error' : r.status)}</td>
+      <td class="r">${fmtNum(r.offers_processed) || '—'}</td>
+      ${errText}
+    </tr>`;
+  }).join('');
+}
 
-  const cls = overallClass(supplierRows, genRows);
+function renderDash(supplierRows, genRows, schedule, syncRows, syncInProgress) {
+  _dashData = { supplierRows, genRows, schedule, syncRows };
+
+  const cls = overallClass(supplierRows, genRows, syncRows);
   const dash = $('#dash');
   dash.className = cls;
 
   const sLast = supplierRows[0];
   const gLast = genRows[0];
+  const yLast = syncRows[0];
 
   const suppSummary = sLast
     ? `${miniIco(sLast.status)} ${miniTime(sLast.finished_at ?? sLast.started_at)} · <b>${fmtNum(sLast.offers_processed) || '—'}</b> офф.`
@@ -200,11 +218,27 @@ function renderDash(supplierRows, genRows, schedule) {
     ? `${miniIco(gLast.status)} ${miniTime(gLast.finished_at ?? gLast.started_at)} · <b>${fmtNum(gLast.count) || '—'}</b> офф.`
     : '— нет данных';
 
+  const syncStatus = syncInProgress ? 'running' : (yLast?.status === 'failed' ? 'error' : yLast?.status);
+  const syncSummaryIco = syncInProgress ? miniIco('running') : miniIco(syncStatus);
+  const syncSummary = syncInProgress
+    ? `${syncSummaryIco} идёт…`
+    : yLast
+      ? `${syncSummaryIco} ${miniTime(yLast.finished_at ?? yLast.started_at)} · <b>${fmtNum(yLast.offers_processed) || '—'}</b> офф.`
+      : '— нет данных';
+  const syncErrHtml = (yLast?.status === 'error' || yLast?.status === 'failed') && yLast.error_message
+    ? `<div style="color:#c00;font-size:11px;margin-top:2px;font-family:monospace;word-break:break-word" title="${escapeHtml(yLast.error_message)}">${escapeHtml(yLast.error_message.slice(0, 120))}</div>`
+    : '';
+
   const suppNextAt = schedule?.supplier_next_at ? new Date(schedule.supplier_next_at) : null;
   const suppNextTxt = suppNextAt ? fmtTimeUntil(suppNextAt - Date.now()) : '—';
 
   const feedNextAt = nextCronAt(schedule?.feed_cron);
   const feedNextTxt = feedNextAt ? fmtTimeUntil(feedNextAt - Date.now()) : '—';
+
+  const syncNextAt = nextCronAt(schedule?.sync_cron);
+  const syncNextTxt = schedule?.sync_cron
+    ? (syncNextAt ? fmtTimeUntil(syncNextAt - Date.now()) : '—')
+    : '<span style="color:#aaa">не задан</span>';
 
   dash.innerHTML = `
     <div class="dh-top">
@@ -235,6 +269,16 @@ function renderDash(supplierRows, genRows, schedule) {
         <table class="dh-tbl">
           <thead><tr><th>Время</th><th>Ст</th><th class="r">Офф.</th><th class="r" title="Ниже закупки">Зак.</th><th class="r" title="Нет правила">Пр.</th><th></th></tr></thead>
           <tbody>${buildGenRows(genRows)}</tbody>
+        </table>
+      </div>
+      <div>
+        <div class="dh-sec-head">Синк с ЯМ</div>
+        <div class="dh-summary">${syncSummary}</div>
+        ${syncErrHtml}
+        <div class="dh-nxt">Следующий: ${syncNextTxt}</div>
+        <table class="dh-tbl">
+          <thead><tr><th>Время</th><th>Ст</th><th class="r">Офф.</th><th></th></tr></thead>
+          <tbody>${buildSyncRows(syncRows)}</tbody>
         </table>
       </div>
     </div>`;
@@ -275,12 +319,14 @@ function updateNextLabels() {
   // also update dashboard "next" labels live if dashboard is rendered
   if (_dashData) {
     const suppNextAt = s.supplier_next_at ? new Date(s.supplier_next_at) : null;
-    const suppEl = document.querySelector('.dh-cols > div:first-child .dh-nxt');
-    if (suppEl && suppNextAt) suppEl.textContent = `Следующий: ${fmtTimeUntil(suppNextAt - Date.now())}`;
+    const cols = document.querySelectorAll('.dh-cols > div');
+    if (cols[0] && suppNextAt) cols[0].querySelector('.dh-nxt').textContent = `Следующий: ${fmtTimeUntil(suppNextAt - Date.now())}`;
 
     const feedNextAt = nextCronAt(s.feed_cron);
-    const feedEl2 = document.querySelector('.dh-cols > div:last-child .dh-nxt');
-    if (feedEl2 && feedNextAt) feedEl2.textContent = `Следующая: ${fmtTimeUntil(feedNextAt - Date.now())}`;
+    if (cols[1] && feedNextAt) cols[1].querySelector('.dh-nxt').textContent = `Следующая: ${fmtTimeUntil(feedNextAt - Date.now())}`;
+
+    const syncNextAt = nextCronAt(s.sync_cron);
+    if (cols[2] && syncNextAt) cols[2].querySelector('.dh-nxt').textContent = `Следующий: ${fmtTimeUntil(syncNextAt - Date.now())}`;
   }
 }
 
@@ -373,23 +419,81 @@ function renderGenerated(rows) {
   $('#genTable').innerHTML = html;
 }
 
+// ── SYNC CARD ─────────────────────────────────────────────────
+function renderSync(rows, syncInProgress) {
+  const meta = $('#syncMeta');
+  const last = rows.find(r => r.status === 'success');
+  meta.innerHTML = last
+    ? `Последний успешный: <b>${fmtDate(last.finished_at ?? last.started_at)}</b> · офферов: <b>${fmtNum(last.offers_processed)}</b>`
+    : 'Успешных синков пока нет';
+
+  const btn = $('#syncBtn');
+  if (btn) btn.disabled = syncInProgress;
+  const st = $('#syncStatus');
+  if (st && syncInProgress) st.textContent = 'Идёт синхронизация…';
+
+  if (!rows.length) { $('#syncTable').innerHTML = '<div class="empty">Пусто</div>'; return; }
+  const html = `
+    <table>
+      <thead>
+        <tr>
+          <th class="num">#</th>
+          <th>Начало</th>
+          <th>Окончание</th>
+          <th>Длительность</th>
+          <th>Статус</th>
+          <th class="num">Офферов</th>
+          <th class="num">Цен</th>
+          <th class="num">Остатков</th>
+          <th class="num">Комиссий</th>
+          <th class="num">Ошибок</th>
+          <th>Сообщение об ошибке</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          const isErr = r.status === 'error' || r.status === 'failed';
+          const msg = r.error_message || '';
+          return `<tr${isErr ? ' style="background:#fff5f5"' : ''}>
+            <td class="num">${r.id}</td>
+            <td>${fmtDate(r.started_at)}</td>
+            <td>${fmtDate(r.finished_at)}</td>
+            <td>${fmtDur(diffMs(r.started_at, r.finished_at))}</td>
+            <td>${statusBadge(isErr ? 'error' : r.status)}</td>
+            <td class="num">${fmtNum(r.offers_processed)}</td>
+            <td class="num">${fmtNum(r.prices_processed)}</td>
+            <td class="num">${fmtNum(r.stocks_processed)}</td>
+            <td class="num">${fmtNum(r.commissions_processed)}</td>
+            <td class="num">${fmtNum(r.errors_count)}</td>
+            <td class="err" title="${escapeHtml(msg)}">${escapeHtml(msg.slice(0, 200))}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  $('#syncTable').innerHTML = html;
+}
+
 // ── LOAD ──────────────────────────────────────────────────────
 async function load() {
   const btn = $('#refresh');
   if (btn) btn.disabled = true;
   try {
-    const [supplier, generated, schedule] = await Promise.all([
+    const [supplier, generated, schedule, syncData] = await Promise.all([
       fetch('/api/feed-logs/supplier').then(r => r.json()),
       fetch('/api/feed-logs/generated').then(r => r.json()),
       fetch('/api/feed-logs/schedule').then(r => r.json()),
+      fetch('/api/ym/sync-runs').then(r => r.json()),
     ]);
 
     const sRows = supplier.rows ?? [];
     const gRows = generated.rows ?? [];
+    const yRows = syncData.rows ?? [];
+    const syncInProgress = syncData.syncInProgress ?? false;
 
     lastLoadedAt = Date.now();
-    renderDash(sRows, gRows, schedule);
+    renderDash(sRows, gRows, schedule, yRows, syncInProgress);
     renderSupplier(sRows);
+    renderSync(yRows, syncInProgress);
     renderGenerated(gRows);
 
     if (schedule) {
@@ -400,6 +504,9 @@ async function load() {
       $('#supplierCronHint').textContent = staleH ? ` (не чаще раза в ${staleH} ч)` : '';
       $('#feedCron').textContent = schedule.feed_cron ?? '—';
       $('#feedCronHint').textContent = describeCron(schedule.feed_cron);
+      const sc = schedule.sync_cron;
+      $('#syncCron').textContent = sc ?? 'не задан (SYNC_CRON)';
+      $('#syncCronHint').textContent = sc ? describeCron(sc) : '';
       updateNextLabels();
       const supLink = $('#supplierFeedLink');
       if (schedule.supplier_feed_url) {
@@ -483,6 +590,44 @@ function toggleNav() {
   localStorage.setItem('navHidden', hidden ? '1' : '0');
   applyNavState(hidden);
 }
+
+// ── SYNC BUTTON ───────────────────────────────────────────────
+let syncPollTimer = null;
+async function pollSyncStatus() {
+  try {
+    const d = await fetch('/api/ym/sync-runs?limit=1').then(r => r.json());
+    const st = $('#syncStatus');
+    if (d.syncInProgress) {
+      if (st) st.textContent = 'Идёт синхронизация…';
+      $('#syncBtn').disabled = true;
+    } else {
+      if (st) st.textContent = '';
+      $('#syncBtn').disabled = false;
+      if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; load(); }
+    }
+  } catch {}
+}
+
+$('#syncBtn').addEventListener('click', async () => {
+  const btn = $('#syncBtn');
+  btn.disabled = true;
+  const st = $('#syncStatus');
+  st.textContent = 'Запускаю…';
+  try {
+    const r = await fetch('/api/sync', { method: 'POST' }).then(r => r.json());
+    if (r.error) {
+      st.textContent = `Ошибка: ${r.error}`;
+      btn.disabled = false;
+      return;
+    }
+    st.textContent = 'Запущено, жду результат…';
+    if (!syncPollTimer) syncPollTimer = setInterval(pollSyncStatus, 3000);
+    pollSyncStatus();
+  } catch (e) {
+    st.textContent = `Ошибка: ${e.message}`;
+    btn.disabled = false;
+  }
+});
 
 // ── INIT ──────────────────────────────────────────────────────
 load();

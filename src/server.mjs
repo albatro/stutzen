@@ -522,6 +522,12 @@ app.post('/api/ym/price-feed/regenerate', async (req, res) => {
   res.json({ ok: true, message: 'генерация запущена' });
 });
 
+app.get('/api/ym/sync-runs', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
+  const rows = db.prepare(`SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?`).all(limit);
+  res.json({ rows, syncInProgress });
+});
+
 // Оффера из сгенерированного фида в JSON — для страницы /feed-view.html,
 // чтобы можно было посмотреть YML в разобранном виде без парсинга XML на клиенте.
 app.get('/api/ym/price-feed/rows', (req, res) => {

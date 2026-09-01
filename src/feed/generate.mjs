@@ -87,6 +87,7 @@ export function renderFeedXml(offers, { shopName = 'Stutzen', shopUrl = 'https:/
     // Мин. цена для участия в акциях/лидере ЯМ. Ставим равной нашей розничной × партийность,
     // чтобы ЯМ не мог опустить цену ниже нашей в промо-механиках.
     parts.push(`    <minimum_price_for_bestseller>${feedPrice}</minimum_price_for_bestseller>`);
+    parts.push(`    <purchase-price>${Math.round(o.purchase_price * stepQty * 100) / 100}</purchase-price>`);
     parts.push(`    <currencyId>RUB</currencyId>`);
     if (o.supplier_category_id != null) parts.push(`    <categoryId>${o.supplier_category_id}</categoryId>`);
     const pic = o.image_url ?? o.supplier_picture;
