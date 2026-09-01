@@ -1353,15 +1353,13 @@ app.get('/api/ozon/debug', async (req, res) => {
       : null;
 
     // 4b. Склады продавца
-    const warehouses = await ozonFetch('POST', '/v1/warehouse/list', {});
+    const warehouses = await ozonFetch('POST', '/v1/warehouse/list', {}).catch(e => ({ error: e.message }));
 
-    // 4c. FBS остатки по первым 2 товарам (если есть склады)
-    const warehouseIds = (warehouses?.result ?? []).map(w => w.warehouse_id);
-    const fbsStocks = productIds.length && warehouseIds.length
-      ? await ozonFetch('POST', '/v1/product/info/stocks', {
-          filter: { product_id: productIds, warehouse_id: warehouseIds }, limit: 2,
-        }).catch(e => ({ error: e.message }))
-      : null;
+    // 4c. FBS остатки через stocks-by-warehouse/fbs (нужны fbs_sku)
+    const fbs_skus = (list?.result?.items ?? []).map(i => i.fbs_sku).filter(Boolean);
+    const fbsStocks = fbs_skus.length
+      ? await ozonFetch('POST', '/v3/product/info/stocks-by-warehouse/fbs', { fbs_sku_ids: fbs_skus.slice(0, 5) }).catch(e => ({ error: e.message }))
+      : { note: 'нет fbs_sku в /v3/product/list', sample_item: list?.result?.items?.[0] };
 
     // 5. Диагностика БД: количество строк и образец реальных колонок (не raw_json)
     const dbStats = {
