@@ -1352,6 +1352,17 @@ app.get('/api/ozon/debug', async (req, res) => {
         })
       : null;
 
+    // 4b. Склады продавца
+    const warehouses = await ozonFetch('POST', '/v1/warehouse/list', {});
+
+    // 4c. FBS остатки по первым 2 товарам (если есть склады)
+    const warehouseIds = (warehouses?.result ?? []).map(w => w.warehouse_id);
+    const fbsStocks = productIds.length && warehouseIds.length
+      ? await ozonFetch('POST', '/v1/product/info/stocks', {
+          filter: { product_id: productIds, warehouse_id: warehouseIds }, limit: 2,
+        }).catch(e => ({ error: e.message }))
+      : null;
+
     // 5. Диагностика БД: количество строк и образец реальных колонок (не raw_json)
     const dbStats = {
       commissions_count: db.prepare('SELECT COUNT(*) AS c FROM ozon_commissions').get().c,
@@ -1389,7 +1400,7 @@ app.get('/api/ozon/debug', async (req, res) => {
       transactions = { error: e2.message };
     }
 
-    res.json({ list, info, prices, stocks, dbStats, dbCommissions, transactions });
+    res.json({ list, info, prices, stocks, warehouses, fbsStocks, dbStats, dbCommissions, transactions });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message, stack: e.stack });
   }
