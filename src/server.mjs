@@ -1443,6 +1443,29 @@ app.delete('/api/ozon/markup-rules/:id', (req, res) => {
 });
 
 // ---- Ozon ценовые предложения ----
+app.get('/api/ozon/unmatched', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
+  const rows = db.prepare(`
+    SELECT p.product_id, p.offer_id, p.name, p.category_name,
+           pr.price AS current_price,
+           sup.purchase_price, sup.offer_id AS sup_offer_id
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    WHERE (sup.offer_id IS NULL OR sup.purchase_price IS NULL OR sup.purchase_price <= 0)
+      AND p.is_archived = 0
+    ORDER BY p.offer_id
+    LIMIT ?
+  `).all(limit);
+  const total = db.prepare(`
+    SELECT COUNT(*) AS c FROM ozon_products p
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    WHERE (sup.offer_id IS NULL OR sup.purchase_price IS NULL OR sup.purchase_price <= 0)
+      AND p.is_archived = 0
+  `).get().c;
+  res.json({ total, rows });
+});
+
 app.get('/api/ozon/price-proposals', (req, res) => { try {
   const search = (req.query.search ?? '').toString().trim();
   const category = req.query.category ? Number(req.query.category) : null;
