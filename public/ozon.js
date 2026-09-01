@@ -358,6 +358,114 @@ function startPolling(fast) {
   _statsInterval = setInterval(loadStats, fast ? 2000 : 10000);
 }
 
+// ---- Логи синхронизации ----
+const fmtDate = (s) => s ? new Date(s).toLocaleString('ru-RU') : '—';
+const fmtDur = (a, b) => {
+  if (!a || !b) return '';
+  const ms = new Date(b) - new Date(a);
+  if (ms < 0) return '';
+  if (ms < 60000) return `${Math.round(ms / 1000)} с`;
+  const m = Math.floor(ms / 60000), s = Math.round((ms % 60000) / 1000);
+  return s ? `${m} мин ${s} с` : `${m} мин`;
+};
+
+function nextCronAt(expr) {
+  if (!expr) return null;
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour] = parts;
+  if (parts[2] !== '*' || parts[3] !== '*' || parts[4] !== '*') return null;
+  const now = new Date(), next = new Date(now);
+  next.setSeconds(0, 0);
+  const mH = /^\*\/(\d+)$/.exec(hour);
+  if (min === '0' && mH) {
+    const n = Number(mH[1]);
+    next.setMinutes(0);
+    let h = next.getHours() + 1;
+    while (h % n !== 0) h++;
+    if (h >= 24) { next.setDate(next.getDate() + 1); h %= 24; }
+    next.setHours(h); return next;
+  }
+  if (hour === '*' && /^\d+$/.test(min)) {
+    next.setMinutes(Number(min));
+    if (next <= now) next.setHours(next.getHours() + 1);
+    return next;
+  }
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
+    next.setHours(Number(hour), Number(min));
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next;
+  }
+  return null;
+}
+
+function fmtUntil(ms) {
+  if (ms <= 0) return 'с минуты на минуту';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `через ${min} мин`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `через ${h} ч ${m} мин` : `через ${h} ч`;
+}
+
+let _syncSchedule = null;
+
+function updateSyncNextLabel() {
+  if (!_syncSchedule?.ozon_sync_cron) return;
+  const nextAt = nextCronAt(_syncSchedule.ozon_sync_cron);
+  const el = document.getElementById('sl-next');
+  if (el && nextAt) el.textContent = `· следующий ${fmtUntil(nextAt - Date.now())}`;
+}
+
+async function loadSyncLogs() {
+  try {
+    const [runs, sched] = await Promise.all([
+      fetch('/api/ozon/sync-runs?limit=15').then(r => r.json()),
+      fetch('/api/ozon/sync-schedule').then(r => r.json()),
+    ]);
+    _syncSchedule = sched;
+
+    const cronEl = document.getElementById('sl-cron');
+    if (cronEl) cronEl.textContent = sched.ozon_sync_cron ?? 'не задан (OZON_SYNC_CRON)';
+    updateSyncNextLabel();
+
+    const rows = runs.rows ?? [];
+    if (!rows.length) {
+      document.getElementById('sl-table').innerHTML = '<span style="color:#aaa">Синхронизаций ещё не было</span>';
+      return;
+    }
+    const badge = (s) => {
+      const label = s === 'success' ? 'успех' : s === 'partial' ? 'частично' : s === 'running' ? 'идёт' : 'ошибка';
+      return `<span class="badge ${s}">${label}</span>`;
+    };
+    const html = `<table>
+      <thead><tr>
+        <th>#</th><th>Начало</th><th>Длит.</th><th>Статус</th>
+        <th class="r">Товары</th><th class="r">Цены</th><th class="r">Остатки</th><th class="r">Ошибок</th>
+        <th>Сообщение</th>
+      </tr></thead>
+      <tbody>${rows.map(r => {
+        const msg = r.error_message || r.details || '';
+        return `<tr>
+          <td>${r.id}</td>
+          <td>${fmtDate(r.started_at)}</td>
+          <td>${fmtDur(r.started_at, r.finished_at)}</td>
+          <td>${badge(r.status)}</td>
+          <td class="r">${fmtNum(r.products_processed)}</td>
+          <td class="r">${fmtNum(r.prices_processed)}</td>
+          <td class="r">${fmtNum(r.stocks_processed)}</td>
+          <td class="r">${fmtNum(r.errors_count)}</td>
+          <td class="err-txt" title="${msg.replace(/"/g,'&quot;')}">${msg.slice(0, 120)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+    document.getElementById('sl-table').innerHTML = html;
+  } catch {}
+}
+
+setInterval(updateSyncNextLabel, 10000);
+
 loadCategories();
 loadStats();
+loadSyncLogs();
 startPolling(false);
+setInterval(loadSyncLogs, 30000);

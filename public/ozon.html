@@ -128,6 +128,25 @@
     .calc-tip .tip-total { font-weight: 700; font-size: 13px; }
     .calc-tip .tip-pos .tip-val { color: #4ade80; }
     .calc-tip .tip-neg .tip-val { color: #f87171; }
+
+    /* Логи синхронизации */
+    #sync-logs {
+      border: 1px solid #e5e5e5; border-radius: 6px;
+      padding: 10px 14px; margin-bottom: 10px; font-size: 13px;
+    }
+    #sync-logs summary { cursor: pointer; font-weight: 600; user-select: none; }
+    #sync-logs .sched { color: #555; margin: 6px 0 8px; }
+    #sync-logs .cron-badge { display: inline-block; padding: 1px 8px; border-radius: 3px; background: #eef4ff; color: #06c; font-family: monospace; font-size: 12px; }
+    #sync-logs table { border-collapse: collapse; width: 100%; }
+    #sync-logs th, #sync-logs td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
+    #sync-logs th { font-size: 11px; font-weight: 600; color: #888; background: #fafafa; }
+    #sync-logs td.r { text-align: right; font-variant-numeric: tabular-nums; }
+    #sync-logs .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+    #sync-logs .badge.success { background: #d4edda; color: #155724; }
+    #sync-logs .badge.partial { background: #fff3cd; color: #856404; }
+    #sync-logs .badge.error, #sync-logs .badge.failed { background: #f8d7da; color: #721c24; }
+    #sync-logs .badge.running { background: #fff3cd; color: #856404; }
+    #sync-logs .err-txt { color: #c00; font-family: monospace; font-size: 11px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -160,6 +179,15 @@
     </span>
     <span id="stats" class="stats"></span>
   </div>
+  <details id="sync-logs">
+    <summary>История синхронизации Ozon</summary>
+    <div class="sched">
+      Расписание: <span id="sl-cron" class="cron-badge">—</span>
+      <span id="sl-next" style="color:#555;margin-left:8px;"></span>
+    </div>
+    <div id="sl-table"><span style="color:#aaa">Загрузка…</span></div>
+  </details>
+
   <div id="progress">
     <div class="pr-title"><span class="spinner">⟳</span> <span id="pr-label">Синхронизация…</span> <span class="pr-elapsed" id="pr-elapsed"></span></div>
     <div class="pr-phases">

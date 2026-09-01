@@ -1735,6 +1735,18 @@ app.put('/api/ozon/bulk-prices/auto', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/ozon/sync-runs', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
+  const rows = db.prepare(`SELECT * FROM ozon_sync_runs ORDER BY id DESC LIMIT ?`).all(limit);
+  res.json({ rows, syncInProgress: ozonSyncInProgress });
+});
+
+app.get('/api/ozon/sync-schedule', (req, res) => {
+  const cron = process.env.OZON_SYNC_CRON ?? null;
+  const lastSuccess = db.prepare(`SELECT started_at, finished_at FROM ozon_sync_runs WHERE status = 'success' ORDER BY id DESC LIMIT 1`).get() ?? null;
+  res.json({ ozon_sync_cron: cron, last_success_at: lastSuccess?.finished_at ?? null, syncInProgress: ozonSyncInProgress });
+});
+
 // ---- Cron ----
 const SYNC_CRON = process.env.SYNC_CRON ?? null;
 if (SYNC_CRON) {
@@ -1745,6 +1757,19 @@ if (SYNC_CRON) {
     finally { syncInProgress = false; }
   });
   console.log(`Cron sync: ${SYNC_CRON}`);
+}
+
+const OZON_SYNC_CRON = process.env.OZON_SYNC_CRON ?? null;
+if (OZON_SYNC_CRON) {
+  cron.schedule(OZON_SYNC_CRON, async () => {
+    if (ozonSyncInProgress) return;
+    ozonSyncInProgress = true;
+    import('./ozon/sync.mjs')
+      .then(m => m.runOzonSync())
+      .catch(e => console.error('[OZON cron] sync failed:', e))
+      .finally(() => { ozonSyncInProgress = false; });
+  });
+  console.log(`Cron ozon sync: ${OZON_SYNC_CRON}`);
 }
 
 // Ozon автоотправка цен — каждые 15 минут
