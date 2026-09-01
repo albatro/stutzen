@@ -66,7 +66,7 @@ function aggregateTariffs(tariffsArr) {
 
 const log = (...a) => console.log(`[${new Date().toLocaleTimeString()}]`, ...a);
 
-export async function runSync({ pageSize = 100, priceBatch = 200, tariffBatch = 100 } = {}) {
+export async function runSync({ pageSize = 100, priceBatch = 50, tariffBatch = 100 } = {}) {
   const runId = startSyncRun();
   log(`Старт синхронизации #${runId}`);
 

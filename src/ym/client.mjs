@@ -38,10 +38,13 @@ export async function ymFetch(method, path, { body, query } = {}, attempt = 1) {
       signal: AbortSignal.timeout(45000),
     });
 
-    if (res.status === 429 || res.status >= 500) {
+    // 420 = ЯМ rate-limit («Превышен лимит запросов»), 429 = стандартный rate-limit, 5xx = сервер
+    if (res.status === 420 || res.status === 429 || res.status >= 500) {
       if (attempt > 6) throw new Error(`HTTP ${res.status} после 6 попыток: ${path}`);
-      const wait = Math.min(60000, 1000 * 2 ** attempt);
-      console.warn(`[YM] HTTP ${res.status} on ${path}, ретрай через ${wait}ms (попытка ${attempt})`);
+      // 420 ждём дольше: ЯМ снимает ограничение медленно
+      const base = res.status === 420 ? 10000 : 1000;
+      const wait = Math.min(120000, base * 2 ** (attempt - 1));
+      console.warn(`[YM] HTTP ${res.status} on ${path}, ретрай через ${Math.round(wait / 1000)}с (попытка ${attempt})`);
       await sleep(wait);
       return ymFetch(method, path, { body, query }, attempt + 1);
     }
