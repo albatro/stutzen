@@ -1211,6 +1211,27 @@ app.get('/api/ozon/products', (req, res) => { try {
       c.fbs_commission_percent, c.fbs_first_mile_amount, c.fbs_first_mile_max_amount, c.fbs_deliv_amount,
       c.fbs_direct_flow_trans_max_amount, c.fbs_direct_flow_trans_min_amount, c.fbs_return_flow_amount,
       c.sales_percent_rfbs, c.sales_percent_fbp,
+      -- Чистая выручка FBO: цена − комиссия% − эквайринг − доставка − логистика(max)
+      CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL THEN
+        ROUND(
+          pr.price
+          - pr.price * c.fbo_commission_percent / 100.0
+          - COALESCE(pr.acquiring, 0)
+          - COALESCE(c.fbo_deliv_amount, 0)
+          - COALESCE(c.fbo_direct_flow_trans_max_amount, 0)
+        , 2)
+      ELSE NULL END AS fbo_net,
+      -- Чистая выручка FBS: цена − комиссия% − эквайринг − доставка − первая миля(max) − логистика(max)
+      CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL THEN
+        ROUND(
+          pr.price
+          - pr.price * c.fbs_commission_percent / 100.0
+          - COALESCE(pr.acquiring, 0)
+          - COALESCE(c.fbs_deliv_amount, 0)
+          - COALESCE(c.fbs_first_mile_max_amount, 0)
+          - COALESCE(c.fbs_direct_flow_trans_max_amount, 0)
+        , 2)
+      ELSE NULL END AS fbs_net,
       p.updated_at
     ${baseQuery}
     ORDER BY ${sortExpr} ${dir}

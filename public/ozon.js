@@ -1,6 +1,14 @@
 const $ = (sel) => document.querySelector(sel);
 const fmtMoney = (v) => v == null ? '' : Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const fmtPct = (v) => v == null ? '' : `${v}%`;
+const fmtNet = (cell) => {
+  const v = cell.getValue();
+  if (v == null) return '';
+  const s = Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  cell.getElement().style.color = v < 0 ? '#c00' : v === 0 ? '#888' : '#1a7a3a';
+  cell.getElement().style.fontWeight = '600';
+  return s;
+};
 
 const table = new Tabulator('#table', {
   layout: 'fitDataStretch',
@@ -47,6 +55,12 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Эквайринг, ₽', field: 'acquiring', width: 110, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Выручка FBS, ₽', field: 'fbs_net', width: 130, hozAlign: 'right', frozen: false,
+      formatter: fmtNet,
+      tooltip: 'Цена − комиссия FBS% − эквайринг − доставка − первая миля(макс) − логистика(макс)' },
+    { title: 'Выручка FBO, ₽', field: 'fbo_net', width: 130, hozAlign: 'right',
+      formatter: fmtNet,
+      tooltip: 'Цена − комиссия FBO% − эквайринг − доставка − логистика(макс)' },
     { title: 'Остаток', field: 'stock_total', width: 90, hozAlign: 'right' },
     { title: 'Резерв', field: 'stock_reserved', width: 80, hozAlign: 'right' },
     { title: 'Комиссия FBO, %', field: 'fbo_commission_percent', width: 130, hozAlign: 'right',
