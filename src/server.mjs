@@ -1156,7 +1156,7 @@ app.get('/api/ozon/categories', (req, res) => {
   res.json(rows);
 });
 
-app.get('/api/ozon/products', (req, res) => {
+app.get('/api/ozon/products', (req, res) => { try {
   const search = (req.query.search ?? '').toString().trim();
   const category = req.query.category ? Number(req.query.category) : null;
   const sort = (req.query.sort ?? 'product_id').toString();
@@ -1218,7 +1218,7 @@ app.get('/api/ozon/products', (req, res) => {
   `).all(...params, limit, offset);
 
   res.json({ total, rows });
-});
+} catch (e) { res.status(500).json({ error: e.message }); } });
 
 app.get('/api/ozon/debug', async (req, res) => {
   try {
@@ -1249,12 +1249,31 @@ app.get('/api/ozon/debug', async (req, res) => {
         })
       : null;
 
-    // 5. raw_json из БД — что уже сохранено
+    // 5. Диагностика БД: количество строк и образец реальных колонок (не raw_json)
+    const dbStats = {
+      commissions_count: db.prepare('SELECT COUNT(*) AS c FROM ozon_commissions').get().c,
+      prices_count:      db.prepare('SELECT COUNT(*) AS c FROM ozon_prices').get().c,
+      products_count:    db.prepare('SELECT COUNT(*) AS c FROM ozon_products').get().c,
+      sample_commission: db.prepare(`
+        SELECT product_id, fbo_commission_percent, fbo_deliv_amount, fbo_return_flow_amount,
+               fbo_direct_flow_trans_min_amount, fbo_direct_flow_trans_max_amount,
+               fbs_commission_percent, fbs_deliv_amount, fbs_return_flow_amount,
+               fbs_direct_flow_trans_min_amount, fbs_direct_flow_trans_max_amount,
+               sales_percent_rfbs, sales_percent_fbp, acquiring_via_price_join
+        FROM ozon_commissions c
+        LEFT JOIN (SELECT product_id AS pid, acquiring AS acquiring_via_price_join FROM ozon_prices) pr ON pr.pid = c.product_id
+        WHERE fbo_commission_percent IS NOT NULL LIMIT 3
+      `).all(),
+      ozon_commissions_columns: db.prepare("PRAGMA table_info('ozon_commissions')").all().map(r => r.name),
+      ozon_prices_columns:      db.prepare("PRAGMA table_info('ozon_prices')").all().map(r => r.name),
+    };
+
+    // 6. raw_json из БД
     const dbCommissions = db.prepare(
       'SELECT product_id, raw_json FROM ozon_commissions WHERE raw_json IS NOT NULL LIMIT 3'
     ).all().map(r => ({ product_id: r.product_id, raw: JSON.parse(r.raw_json) }));
 
-    // 6. Пример финансовых транзакций (эквайринг и пр.)
+    // 7. Пример финансовых транзакций (эквайринг и пр.)
     let transactions = null;
     try {
       const dateFrom = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
@@ -1267,7 +1286,7 @@ app.get('/api/ozon/debug', async (req, res) => {
       transactions = { error: e2.message };
     }
 
-    res.json({ list, info, prices, stocks, dbCommissions, transactions });
+    res.json({ list, info, prices, stocks, dbStats, dbCommissions, transactions });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message, stack: e.stack });
   }

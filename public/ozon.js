@@ -148,7 +148,8 @@ table.on('dataLoaded', () => {
   }
 });
 
-document.querySelector('.gear-btn')?.addEventListener('click', () => {
+document.querySelector('.gear-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
   document.querySelector('.gear-panel')?.classList.toggle('open');
 });
 document.addEventListener('click', (e) => {
