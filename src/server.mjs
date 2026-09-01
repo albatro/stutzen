@@ -1245,6 +1245,78 @@ app.get('/api/ozon/products', (req, res) => { try {
   res.json({ total, rows });
 } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// Ozon + закупочная цена поставщика + маржа
+app.get('/api/ozon/profit', (req, res) => { try {
+  const search   = (req.query.search ?? '').toString().trim();
+  const category = req.query.category ? Number(req.query.category) : null;
+  const onlyMatched = req.query.matched === '1';
+  const sort = (req.query.sort ?? 'product_id').toString();
+  const dir  = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+  const limit  = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+  const sortMap = {
+    product_id: 'p.product_id', offer_id: 'p.offer_id', name: 'p.name',
+    price: 'pr.price', purchase_price: 'sup.purchase_price',
+    margin_fbs: 'margin_fbs', margin_pct_fbs: 'margin_pct_fbs',
+    stock_total: 'COALESCE(s.stock_total,0)', updated_at: 'p.updated_at',
+  };
+  const sortExpr = sortMap[sort] ?? 'p.product_id';
+
+  const where = ['1=1'];
+  const params = [];
+  if (search) {
+    where.push(`(p.offer_id LIKE ? OR p.name LIKE ?)`);
+    const q = `%${search}%`; params.push(q, q);
+  }
+  if (category)    { where.push(`p.category_id = ?`);           params.push(category); }
+  if (onlyMatched) { where.push(`sup.purchase_price IS NOT NULL`); }
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+
+  const fboNet = `ROUND(pr.price - pr.price*c.fbo_commission_percent/100.0 - COALESCE(pr.acquiring,0) - COALESCE(c.fbo_deliv_amount,0) - COALESCE(c.fbo_direct_flow_trans_max_amount,0), 2)`;
+  const fbsNet = `ROUND(pr.price - pr.price*c.fbs_commission_percent/100.0 - COALESCE(pr.acquiring,0) - COALESCE(c.fbs_deliv_amount,0) - COALESCE(c.fbs_first_mile_max_amount,0) - COALESCE(c.fbs_direct_flow_trans_max_amount,0), 2)`;
+
+  const baseQuery = `
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
+    LEFT JOIN (SELECT product_id, SUM(present) AS stock_total, SUM(reserved) AS stock_reserved FROM ozon_stocks GROUP BY product_id) s ON s.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    ${whereSql}
+  `;
+
+  const total = db.prepare(`SELECT COUNT(*) AS c ${baseQuery}`).get(...params).c;
+  const rows  = db.prepare(`
+    SELECT
+      p.product_id, p.offer_id, p.name, p.category_name, p.image_url, p.status,
+      pr.price, pr.old_price, pr.min_price, pr.acquiring,
+      CASE WHEN pr.price > 0 AND pr.acquiring IS NOT NULL THEN ROUND(pr.acquiring*100.0/pr.price,4) ELSE NULL END AS acquiring_percent,
+      COALESCE(s.stock_total,0) AS stock_total,
+      COALESCE(s.stock_reserved,0) AS stock_reserved,
+      c.fbo_commission_percent, c.fbo_deliv_amount,
+      c.fbo_direct_flow_trans_max_amount, c.fbo_return_flow_amount,
+      c.fbs_commission_percent, c.fbs_first_mile_max_amount, c.fbs_deliv_amount,
+      c.fbs_direct_flow_trans_max_amount, c.fbs_return_flow_amount,
+      sup.purchase_price, sup.vendor, sup.available AS sup_available,
+      CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL THEN ${fboNet} ELSE NULL END AS fbo_net,
+      CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL THEN ${fbsNet} ELSE NULL END AS fbs_net,
+      CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL AND sup.purchase_price IS NOT NULL THEN
+        ROUND(${fbsNet} - sup.purchase_price, 2) ELSE NULL END AS margin_fbs,
+      CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL AND sup.purchase_price > 0 THEN
+        ROUND((${fbsNet} - sup.purchase_price) / sup.purchase_price * 100.0, 1) ELSE NULL END AS margin_pct_fbs,
+      CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL AND sup.purchase_price IS NOT NULL THEN
+        ROUND(${fboNet} - sup.purchase_price, 2) ELSE NULL END AS margin_fbo,
+      CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL AND sup.purchase_price > 0 THEN
+        ROUND((${fboNet} - sup.purchase_price) / sup.purchase_price * 100.0, 1) ELSE NULL END AS margin_pct_fbo,
+      p.updated_at
+    ${baseQuery}
+    ORDER BY ${sortExpr} ${dir}
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  res.json({ total, rows });
+} catch (e) { res.status(500).json({ error: e.message }); } });
+
 app.get('/api/ozon/debug', async (req, res) => {
   try {
     const { ozonFetch } = await import('./ozon/client.mjs');
