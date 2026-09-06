@@ -1325,6 +1325,65 @@ app.get('/api/ozon/profit', (req, res) => { try {
   res.json({ total, rows });
 } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// Ozon + остатки поставщика.
+// Остаток поставщика = 0, если товара нет в фиде поставщика (sup.offer_id IS NULL —
+// import.mjs сам обнуляет count/available для строк, пропавших из последнего фида)
+// или если у поставщика не указана закупочная цена (нет цены → нет и остатка).
+app.get('/api/ozon/supplier-stock', (req, res) => { try {
+  const search   = (req.query.search ?? '').toString().trim();
+  const category = req.query.category ? Number(req.query.category) : null;
+  const onlyMatched = req.query.matched === '1';
+  const sort = (req.query.sort ?? 'product_id').toString();
+  const dir  = req.query.dir === 'desc' ? 'DESC' : 'ASC';
+  const limit  = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+  const supplierStockExpr = `CASE WHEN sup.purchase_price IS NULL THEN 0 ELSE COALESCE(sup.count, 0) END`;
+
+  const sortMap = {
+    product_id: 'p.product_id', offer_id: 'p.offer_id', name: 'p.name',
+    price: 'pr.price', purchase_price: 'sup.purchase_price',
+    stock_total: 'COALESCE(s.stock_total,0)', supplier_stock: supplierStockExpr,
+    updated_at: 'p.updated_at',
+  };
+  const sortExpr = sortMap[sort] ?? 'p.product_id';
+
+  const where = ['1=1'];
+  const params = [];
+  if (search) {
+    where.push(`(p.offer_id LIKE ? OR p.name LIKE ?)`);
+    const q = `%${search}%`; params.push(q, q);
+  }
+  if (category)    { where.push(`p.category_id = ?`);           params.push(category); }
+  if (onlyMatched) { where.push(`sup.purchase_price IS NOT NULL`); }
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+
+  const baseQuery = `
+    FROM ozon_products p
+    LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
+    LEFT JOIN (SELECT product_id, SUM(present) AS stock_total, SUM(reserved) AS stock_reserved FROM ozon_stocks GROUP BY product_id) s ON s.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    ${whereSql}
+  `;
+
+  const total = db.prepare(`SELECT COUNT(*) AS c ${baseQuery}`).get(...params).c;
+  const rows  = db.prepare(`
+    SELECT
+      p.product_id, p.offer_id, p.name, p.category_name, p.image_url,
+      pr.price,
+      COALESCE(s.stock_total,0) AS stock_total,
+      COALESCE(s.stock_reserved,0) AS stock_reserved,
+      sup.purchase_price, sup.vendor, sup.available AS sup_available,
+      ${supplierStockExpr} AS supplier_stock,
+      p.updated_at
+    ${baseQuery}
+    ORDER BY ${sortExpr} ${dir}
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  res.json({ total, rows });
+} catch (e) { res.status(500).json({ error: e.message }); } });
+
 app.get('/api/ozon/debug', async (req, res) => {
   try {
     const { ozonFetch } = await import('./ozon/client.mjs');
