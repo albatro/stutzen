@@ -1767,20 +1767,64 @@ app.get('/api/ozon/sync-schedule', (req, res) => {
 });
 
 // ---- Cron ----
+// node-cron на проде периодически замирает для тяжёлых async-задач: SYNC_CRON и
+// OZON_SYNC_CRON переставали тикать после первого же (для Ozon) или нулевого
+// (для YM) запуска и потом молчали сутками, хотя FEED_CRON на том же node-cron
+// в том же процессе продолжал стабильно работать каждый час. Тот же класс бага
+// уже когда-то ловили на импорте поставщика (см. комментарий у
+// scheduleSupplierImport ниже) — решение то же: свой setTimeout-цикл вместо
+// node-cron для расписаний, где задача реально что-то делает (а не мгновенно
+// резолвится, как FEED_CRON).
+function parseHourStep(expr) {
+  const m = /^0 (?:\*|\*\/(\d+)) \* \* \*$/.exec((expr ?? '').trim());
+  if (!m) return null;
+  return m[1] ? Number(m[1]) : 1;
+}
+
+function scheduleEveryHours(fn, hours, label) {
+  function next() {
+    const now = new Date();
+    const at = new Date(now);
+    at.setMinutes(0, 0, 0);
+    at.setHours(at.getHours() + 1);
+    setTimeout(() => {
+      if (new Date().getHours() % hours === 0) {
+        try { fn(); } catch (e) { console.error(`[${label}] ошибка тика:`, e); }
+      }
+      next();
+    }, at.getTime() - now.getTime()).unref();
+  }
+  next();
+  console.log(`[${label}] расписание: каждые ${hours} ч (setTimeout, не node-cron)`);
+}
+
+function scheduleEveryMinutes(fn, minutes, label) {
+  const ms = minutes * 60 * 1000;
+  function next() {
+    setTimeout(() => {
+      try { fn(); } catch (e) { console.error(`[${label}] ошибка тика:`, e); }
+      next();
+    }, ms).unref();
+  }
+  next();
+  console.log(`[${label}] расписание: каждые ${minutes} мин (setTimeout, не node-cron)`);
+}
+
 const SYNC_CRON = process.env.SYNC_CRON ?? null;
 if (SYNC_CRON) {
-  cron.schedule(SYNC_CRON, async () => {
+  const runTick = () => {
     if (syncInProgress) return;
     syncInProgress = true;
-    try { await runSync(); } catch (e) { console.error('cron sync failed:', e); }
-    finally { syncInProgress = false; }
-  });
-  console.log(`Cron sync: ${SYNC_CRON}`);
+    runSync().catch(e => console.error('cron sync failed:', e)).finally(() => { syncInProgress = false; });
+  };
+  const hours = parseHourStep(SYNC_CRON);
+  if (hours != null) scheduleEveryHours(runTick, hours, 'YM sync');
+  else { cron.schedule(SYNC_CRON, runTick); console.log(`Cron sync (node-cron, нестандартное расписание): ${SYNC_CRON}`); }
 }
 
 const OZON_SYNC_CRON = process.env.OZON_SYNC_CRON ?? null;
 if (OZON_SYNC_CRON) {
-  cron.schedule(OZON_SYNC_CRON, async () => {
+  const runTick = () => {
     if (ozonSyncInProgress) {
       if (Date.now() - ozonSyncStartedAt < OZON_SYNC_STALE_MS) {
         console.warn('[OZON cron] пропуск тика: синхронизация уже идёт');
@@ -1794,19 +1838,23 @@ if (OZON_SYNC_CRON) {
       .then(m => m.runOzonSync())
       .catch(e => console.error('[OZON cron] sync failed:', e))
       .finally(() => { ozonSyncInProgress = false; ozonSyncStartedAt = null; });
-  });
-  console.log(`Cron ozon sync: ${OZON_SYNC_CRON}`);
+  };
+  const hours = parseHourStep(OZON_SYNC_CRON);
+  if (hours != null) scheduleEveryHours(runTick, hours, 'OZON sync');
+  else { cron.schedule(OZON_SYNC_CRON, runTick); console.log(`Cron ozon sync (node-cron, нестандартное расписание): ${OZON_SYNC_CRON}`); }
 }
 
 // Ozon автоотправка цен — каждые 15 минут
-cron.schedule('*/15 * * * *', async () => {
+scheduleEveryMinutes(() => {
   const enabled = db.prepare('SELECT price_group FROM ozon_auto_price_settings WHERE enabled = 1').all();
   if (!enabled.length) return;
-  for (const { price_group } of enabled) {
-    try { await sendOzonGroup(price_group); }
-    catch (e) { console.error(`[OZON auto] group=${price_group}:`, e.message); }
-  }
-});
+  (async () => {
+    for (const { price_group } of enabled) {
+      try { await sendOzonGroup(price_group); }
+      catch (e) { console.error(`[OZON auto] group=${price_group}:`, e.message); }
+    }
+  })();
+}, 15, 'OZON auto price');
 
 // Импорт фида поставщика: проверяем каждый час и импортим, если последнее успешное
 // чтение было давно (SUPPLIER_STALE_HOURS, дефолт 6). Раньше был '0 */6 * * *' —
