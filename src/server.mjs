@@ -17,6 +17,8 @@ let supplierImportInProgress = false;
 let salesImportInProgress = false;
 let pricesSendInProgress = false;
 let ozonSyncInProgress = false;
+let ozonSyncStartedAt = null;
+const OZON_SYNC_STALE_MS = 20 * 60 * 1000; // если синк «завис» дольше этого — считаем блокировку мёртвой
 
 // Закрываем записи, оставшиеся в статусе 'running' из-за перезапуска контейнера.
 {
@@ -1617,13 +1619,17 @@ app.post('/api/ozon/update-prices', async (req, res) => {
 });
 
 app.post('/api/ozon/sync', (req, res) => {
-  if (ozonSyncInProgress) return res.status(409).json({ error: 'Синхронизация уже запущена' });
+  if (ozonSyncInProgress && Date.now() - ozonSyncStartedAt < OZON_SYNC_STALE_MS) {
+    return res.status(409).json({ error: 'Синхронизация уже запущена' });
+  }
+  if (ozonSyncInProgress) console.warn('[OZON] предыдущая блокировка зависла, сбрасываю и запускаю новую синхронизацию');
   ozonSyncInProgress = true;
+  ozonSyncStartedAt = Date.now();
   res.json({ ok: true, message: 'Синхронизация Ozon запущена' });
   import('./ozon/sync.mjs')
     .then(m => m.runOzonSync())
     .catch(e => console.error('[OZON] sync failed:', e))
-    .finally(() => { ozonSyncInProgress = false; });
+    .finally(() => { ozonSyncInProgress = false; ozonSyncStartedAt = null; });
 });
 
 // ---- Ozon bulk prices ----
@@ -1775,12 +1781,19 @@ if (SYNC_CRON) {
 const OZON_SYNC_CRON = process.env.OZON_SYNC_CRON ?? null;
 if (OZON_SYNC_CRON) {
   cron.schedule(OZON_SYNC_CRON, async () => {
-    if (ozonSyncInProgress) return;
+    if (ozonSyncInProgress) {
+      if (Date.now() - ozonSyncStartedAt < OZON_SYNC_STALE_MS) {
+        console.warn('[OZON cron] пропуск тика: синхронизация уже идёт');
+        return;
+      }
+      console.warn('[OZON cron] предыдущая блокировка зависла (> 20 мин), сбрасываю и запускаю новую синхронизацию');
+    }
     ozonSyncInProgress = true;
+    ozonSyncStartedAt = Date.now();
     import('./ozon/sync.mjs')
       .then(m => m.runOzonSync())
       .catch(e => console.error('[OZON cron] sync failed:', e))
-      .finally(() => { ozonSyncInProgress = false; });
+      .finally(() => { ozonSyncInProgress = false; ozonSyncStartedAt = null; });
   });
   console.log(`Cron ozon sync: ${OZON_SYNC_CRON}`);
 }

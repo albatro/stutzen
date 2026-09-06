@@ -42,12 +42,17 @@
     const fmt = (v) => v == null ? '' : Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
 
     let allRows = [];
+    let totalCount = 0;
 
     const table = new Tabulator('#table', {
       data: [],
       layout: 'fitColumns',
       height: '100%',
       placeholder: 'Загрузка…',
+      pagination: true,
+      paginationSize: 50,
+      paginationSizeSelector: [25, 50, 100, 200],
+      paginationCounter: 'rows',
       columns: [
         {
           title: 'Фото', field: 'image_url', width: 56, hozAlign: 'center', headerSort: false,
@@ -85,7 +90,9 @@
             (r.name ?? '').toLowerCase().includes(q))
         : allRows;
       table.setData(filtered);
-      $('#stats').textContent = `Показано: ${filtered.length} из ${allRows.length}`;
+      $('#stats').textContent = q
+        ? `Найдено: ${filtered.length} из ${totalCount}`
+        : `Всего товаров без закупочной цены: ${totalCount}`;
     }
 
     async function load() {
@@ -95,6 +102,7 @@
       try {
         const data = await fetch('/api/ozon/unmatched?limit=5000').then(r => r.json());
         allRows = data.rows ?? [];
+        totalCount = data.total ?? allRows.length;
         applySearch();
       } catch (e) {
         $('#stats').textContent = 'Ошибка: ' + e.message;
