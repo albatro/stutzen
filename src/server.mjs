@@ -1424,8 +1424,11 @@ app.get('/api/ozon/debug', async (req, res) => {
     // 4b. Склады продавца (разные версии API)
     const warehouses = {
       v1_warehouse_list: await ozonFetch('POST', '/v1/warehouse/list', {}).catch(e => ({ error: e.message })),
-      v2: await ozonFetch('POST', '/v2/posting/fbs/warehouse/list', {}).catch(e => ({ error: e.message })),
-      v1_new: await ozonFetch('GET', '/v1/supplier/warehouse', undefined).catch(e => ({ error: e.message })),
+      v2_warehouse_list: await ozonFetch('POST', '/v2/warehouse/list', {}).catch(e => ({ error: e.message })),
+      v1_warehouse_fbo_list: await ozonFetch('POST', '/v1/warehouse/fbo/list', {}).catch(e => ({ error: e.message })),
+      v1_warehouse_fbs_list: await ozonFetch('POST', '/v1/warehouse/fbs/list', {}).catch(e => ({ error: e.message })),
+      v2_fbs_warehouse_list: await ozonFetch('POST', '/v2/posting/fbs/warehouse/list', {}).catch(e => ({ error: e.message })),
+      v1_supplier_warehouse: await ozonFetch('GET', '/v1/supplier/warehouse', undefined).catch(e => ({ error: e.message })),
     };
 
     // 4c. FBS остатки через v3 stocks (альтернатива v4)
