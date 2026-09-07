@@ -1397,6 +1397,13 @@ app.get('/api/ozon/debug', async (req, res) => {
   try {
     const { ozonFetch } = await import('./ozon/client.mjs');
 
+    // 0. Если передан ?product_id= — сырой ответ /v3/product/info/list по нему,
+    // без остального дебаг-шума (для разбора конкретной ошибки по товару).
+    if (req.query.product_id) {
+      const one = await ozonFetch('POST', '/v3/product/info/list', { product_id: [Number(req.query.product_id)] });
+      return res.json({ one });
+    }
+
     // 1. Список товаров
     const list = await ozonFetch('POST', '/v3/product/list', {
       filter: { visibility: 'ALL' }, last_id: '', limit: 2,
