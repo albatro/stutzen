@@ -1404,6 +1404,21 @@ app.get('/api/ozon/debug', async (req, res) => {
       return res.json({ one });
     }
 
+    // Сканируем каталог на непустой errors[] в /v3/product/info/list —
+    // проверяем, можно ли ловить проблемы карточек до попытки записи.
+    if (req.query.scan_errors) {
+      const listPage = await ozonFetch('POST', '/v3/product/list', { filter: { visibility: 'ALL' }, last_id: '', limit: 1000 });
+      const ids = (listPage?.result?.items ?? []).map(i => i.product_id);
+      const infoPage = await ozonFetch('POST', '/v3/product/info/list', { product_id: ids });
+      const items = infoPage?.items ?? [];
+      const withErrors = items.filter(i => (i.errors ?? []).length > 0);
+      return res.json({
+        scanned: items.length,
+        withErrorsCount: withErrors.length,
+        samples: withErrors.slice(0, 10).map(i => ({ offer_id: i.offer_id, errors: i.errors, status_description: i.statuses?.status_description })),
+      });
+    }
+
     // 1. Список товаров
     const list = await ozonFetch('POST', '/v3/product/list', {
       filter: { visibility: 'ALL' }, last_id: '', limit: 2,
