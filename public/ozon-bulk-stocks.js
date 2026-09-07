@@ -29,6 +29,24 @@ async function loadStats() {
 
   updateTimer();
   renderLog(data.lastRuns ?? []);
+  loadErrors();
+}
+
+// ---- Ошибки ----
+async function loadErrors() {
+  const data = await fetch('/api/ozon/stock-updates?status=failed&limit=20').then(r => r.json());
+  const rows = data.rows ?? [];
+  const section = $('errors-section');
+  if (!rows.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  $('errors-body').innerHTML = rows.map(r => `
+    <tr>
+      <td>${new Date(r.sent_at).toLocaleString('ru-RU')}</td>
+      <td>${r.offer_id}</td>
+      <td>${r.old_stock ?? '—'} → ${r.new_stock ?? '—'}</td>
+      <td class="log-error">${r.error ?? ''}</td>
+    </tr>
+  `).join('');
 }
 
 // ---- Лог ----

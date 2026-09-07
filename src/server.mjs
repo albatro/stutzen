@@ -1891,6 +1891,15 @@ app.put('/api/ozon/bulk-prices/auto', (req, res) => {
 
 // ---- Ozon bulk-остатки ----
 
+app.get('/api/ozon/stock-updates', (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 2000);
+  const onlyFailed = req.query.status === 'failed';
+  const rows = db.prepare(
+    `SELECT * FROM ozon_stock_updates ${onlyFailed ? "WHERE status = 'failed'" : ''} ORDER BY id DESC LIMIT ?`
+  ).all(limit);
+  res.json({ rows });
+});
+
 app.get('/api/ozon/bulk-stocks/stats', (req, res) => {
   try {
     const groups = computeOzonStockGroups();
