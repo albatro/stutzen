@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Stutzen — авто-цены Ozon</title>
+  <title>Stutzen — авто-остатки Ozon</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px 16px; color: #222; }
@@ -11,7 +11,6 @@
     .nav a { color: #06c; text-decoration: none; margin-right: 12px; }
     .nav a.active { color: #222; font-weight: bold; text-decoration: underline; }
 
-    /* Таймер */
     .timer-bar {
       display: flex; align-items: center; gap: 16px;
       background: #f8f9ff; border: 1px solid #d0d7f5;
@@ -22,7 +21,6 @@
     .timer-val   { font-size: 20px; font-weight: 700; color: #1a73e8; font-variant-numeric: tabular-nums; }
     .timer-auto  { margin-left: auto; font-size: 12px; color: #888; }
 
-    /* Карточки групп */
     .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
     .card {
       border-radius: 10px; padding: 16px 18px;
@@ -36,11 +34,9 @@
 
     .card.grey   { background: #f5f5f5; }
     .card.orange { background: #fff8f0; border-color: #ffd19a; }
-    .card.blue   { background: #f0f6ff; border-color: #a8c8f8; }
     .card.green  { background: #f0fbf4; border-color: #a0ddb6; }
 
     .card.orange .card-count { color: #e65100; }
-    .card.blue   .card-count { color: #1565c0; }
     .card.green  .card-count { color: #2e7d32; }
     .card.grey   .card-count { color: #666; }
 
@@ -60,7 +56,6 @@
     .send-result.ok  { color: #2e7d32; }
     .send-result.err { color: #c00; }
 
-    /* Лог */
     .log-section { margin-top: 20px; }
     .log-section h2 { font-size: 14px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }
     .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -71,7 +66,7 @@
   </style>
 </head>
 <body>
-  <h1>Ozon — авто-отправка цен</h1>
+  <h1>Ozon — авто-отправка остатков</h1>
   <div class="nav">
     <a href="/">Я.Маркет</a>
     <a href="/supplier.html">Поставщик</a>
@@ -88,76 +83,53 @@
     <a href="/ozon-supplier-stock.html">Остатки поставщика</a>
     <a href="/ozon-markup.html">Наценка</a>
     <a href="/ozon-price.html">Цены</a>
-    <a href="/ozon-bulk-prices.html" class="active">Авто-цены</a>
-    <a href="/ozon-bulk-stocks.html">Авто-остатки</a>
+    <a href="/ozon-bulk-prices.html">Авто-цены</a>
+    <a href="/ozon-bulk-stocks.html" class="active">Авто-остатки</a>
     <a href="/ozon-unmatched.html">Без закупки</a>
   </div>
 
-  <!-- Таймер -->
   <div class="timer-bar">
     <span class="timer-label">Следующая авто-отправка через</span>
     <span class="timer-val" id="timer">—</span>
     <span class="timer-auto" id="timer-note">авто-отправка не настроена</span>
   </div>
 
-  <!-- Карточки групп -->
   <div class="groups">
 
-    <!-- Нет данных -->
     <div class="card grey">
       <div class="card-header">
-        <span class="card-count" id="cnt-no-supplier">—</span>
-        <span class="card-title">Нет данных</span>
+        <span class="card-count" id="cnt-unmatched">—</span>
+        <span class="card-title">Без закупки → 0</span>
       </div>
-      <div class="card-desc">Нет закупочной цены или комиссий — плановая цена не рассчитана. Действий не требуется.</div>
+      <div class="card-desc">Нет закупочной цены у поставщика (см. «Без закупки») — остаток всегда отправляется как 0, входит в счётчик «Нужно обновить» справа.</div>
     </div>
 
-    <!-- Цену нужно поднять -->
     <div class="card orange">
       <div class="card-header">
-        <span class="card-count" id="cnt-raise">—</span>
-        <span class="card-title">Цену нужно поднять</span>
+        <span class="card-count" id="cnt-update">—</span>
+        <span class="card-title">Остаток нужно обновить</span>
       </div>
-      <div class="card-desc">Плановая FBS &gt; текущей на Ozon. Текущая цена ниже плановой.</div>
+      <div class="card-desc">Остаток на Ozon отличается от расчётного (остаток поставщика ÷ партийность, или 0 без закупки).</div>
       <div class="card-actions">
         <div class="auto-row">
-          <input type="checkbox" id="auto-raise">
-          <label class="auto-label" for="auto-raise">Автоотправка каждые 15 мин</label>
+          <input type="checkbox" id="auto-stock">
+          <label class="auto-label" for="auto-stock">Автоотправка каждые 15 мин</label>
         </div>
-        <button class="send-btn" id="send-raise">Отправить сейчас</button>
-        <div class="send-result" id="res-raise"></div>
+        <button class="send-btn" id="send-stock">Отправить сейчас</button>
+        <div class="send-result" id="res-stock"></div>
       </div>
     </div>
 
-    <!-- Цену можно снизить -->
-    <div class="card blue">
-      <div class="card-header">
-        <span class="card-count" id="cnt-lower">—</span>
-        <span class="card-title">Цену можно снизить</span>
-      </div>
-      <div class="card-desc">Плановая FBS &lt; текущей на Ozon. Текущая цена выше плановой.</div>
-      <div class="card-actions">
-        <div class="auto-row">
-          <input type="checkbox" id="auto-lower">
-          <label class="auto-label" for="auto-lower">Автоотправка каждые 15 мин</label>
-        </div>
-        <button class="send-btn" id="send-lower">Отправить сейчас</button>
-        <div class="send-result" id="res-lower"></div>
-      </div>
-    </div>
-
-    <!-- Цена актуальна -->
     <div class="card green">
       <div class="card-header">
         <span class="card-count" id="cnt-actual">—</span>
-        <span class="card-title">Цена актуальна</span>
+        <span class="card-title">Остаток актуален</span>
       </div>
-      <div class="card-desc">Плановая FBS совпадает с текущей ценой на Ozon. Изменений не требуется.</div>
+      <div class="card-desc">Остаток на Ozon совпадает с расчётным. Изменений не требуется.</div>
     </div>
 
   </div>
 
-  <!-- Лог последних отправок -->
   <div class="log-section">
     <h2>Последние отправки (2 часа)</h2>
     <table class="log-table">
@@ -170,6 +142,6 @@
     </table>
   </div>
 
-  <script src="/ozon-bulk-prices.js"></script>
+  <script src="/ozon-bulk-stocks.js"></script>
 </body>
 </html>

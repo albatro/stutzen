@@ -1774,6 +1774,61 @@ async function sendOzonGroup(group) {
   return { sent, errors, skipped: 0 };
 }
 
+// Остаток к отправке в Ozon для одного товара:
+// - нет закупочной цены (товар не сматчен с поставщиком, см. ozon-unmatched.html) → всегда 0;
+// - поставщик отметил как недоступный → 0;
+// - иначе — остаток поставщика с учётом партийности (один SKU Ozon = одна партия
+//   step_quantity штук, см. фикс в /api/ozon/profit).
+function computeOzonStockGroups() {
+  const rows = db.prepare(`
+    SELECT p.offer_id, p.name,
+      COALESCE(s.stock_total, 0) AS current_stock,
+      sup.purchase_price,
+      CASE
+        WHEN sup.purchase_price IS NULL THEN 0
+        WHEN sup.available = 0 THEN 0
+        ELSE COALESCE(sup.count, 0) / COALESCE(sup.step_quantity, 1)
+      END AS desired_stock
+    FROM ozon_products p
+    LEFT JOIN (SELECT product_id, SUM(present) AS stock_total FROM ozon_stocks GROUP BY product_id) s ON s.product_id = p.product_id
+    LEFT JOIN supplier_offers sup ON sup.offer_id = p.offer_id
+    WHERE p.is_archived = 0
+  `).all();
+
+  const groups = { unmatched_zero: [], to_update: [], actual: [] };
+  for (const r of rows) {
+    const item = { offer_id: r.offer_id, name: r.name, current_stock: r.current_stock, desired_stock: r.desired_stock };
+    if (r.desired_stock === r.current_stock) { groups.actual.push(item); continue; }
+    if (r.purchase_price == null) groups.unmatched_zero.push(item);
+    groups.to_update.push(item);
+  }
+  return groups;
+}
+
+async function sendOzonStocks() {
+  const { ozon } = await import('./ozon/client.mjs');
+  const warehouseId = await ozon.getActiveWarehouseId();
+  const { to_update } = computeOzonStockGroups();
+  if (!to_update.length) return { sent: 0, errors: 0 };
+
+  const now = new Date().toISOString();
+  let sent = 0, errors = 0;
+  const logStmt = db.prepare('INSERT INTO ozon_stock_updates (offer_id, old_stock, new_stock, status, error, sent_at) VALUES (?, ?, ?, ?, ?, ?)');
+
+  for (let i = 0; i < to_update.length; i += 100) {
+    const chunk = to_update.slice(i, i + 100);
+    const results = await ozon.updateStocks(chunk.map(r => ({ offer_id: r.offer_id, stock: r.desired_stock, warehouse_id: warehouseId })));
+    for (const r of results) {
+      const item = chunk.find(c => c.offer_id === r.offer_id);
+      logStmt.run(r.offer_id, item?.current_stock ?? null, item?.desired_stock ?? null,
+        r.updated ? 'sent' : 'failed', r.errors?.length ? r.errors.join('; ') : null, now);
+      if (r.updated) sent++; else errors++;
+    }
+  }
+  console.log(`[OZON bulk stock] sent=${sent} errors=${errors}`);
+  return { sent, errors };
+}
+
 function nextCronAt() {
   const now = Date.now();
   const periodMs = 15 * 60 * 1000;
@@ -1823,6 +1878,44 @@ app.put('/api/ozon/bulk-prices/auto', (req, res) => {
   if (!['raise', 'lower'].includes(group)) return res.status(400).json({ error: 'invalid group' });
   db.prepare('UPDATE ozon_auto_price_settings SET enabled=?, updated_at=? WHERE price_group=?')
     .run(enabled ? 1 : 0, new Date().toISOString(), group);
+  res.json({ ok: true });
+});
+
+// ---- Ozon bulk-остатки ----
+
+app.get('/api/ozon/bulk-stocks/stats', (req, res) => {
+  try {
+    const groups = computeOzonStockGroups();
+    const lastRuns = db.prepare(`
+      SELECT sent_at, status, COUNT(*) AS cnt
+      FROM ozon_stock_updates
+      WHERE sent_at >= datetime('now', '-2 hours')
+      GROUP BY strftime('%Y-%m-%dT%H:%M', sent_at), status
+      ORDER BY sent_at DESC LIMIT 20
+    `).all();
+    res.json({
+      counts: {
+        unmatched_zero: groups.unmatched_zero.length,
+        to_update: groups.to_update.length,
+        actual: groups.actual.length,
+      },
+      auto: getSetting('ozon_auto_stock_enabled') === '1',
+      nextRunAt: nextCronAt(),
+      lastRuns,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/ozon/bulk-stocks/execute', async (req, res) => {
+  try {
+    const result = await sendOzonStocks();
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/ozon/bulk-stocks/auto', (req, res) => {
+  const { enabled } = req.body ?? {};
+  setSetting('ozon_auto_stock_enabled', enabled ? '1' : '0');
   res.json({ ok: true });
 });
 
@@ -1927,6 +2020,12 @@ scheduleEveryMinutes(() => {
     }
   })();
 }, 15, 'OZON auto price');
+
+// Ozon автоотправка остатков — каждые 15 минут
+scheduleEveryMinutes(() => {
+  if (getSetting('ozon_auto_stock_enabled') !== '1') return;
+  sendOzonStocks().catch(e => console.error('[OZON auto stock]:', e.message));
+}, 15, 'OZON auto stock');
 
 // Импорт фида поставщика: проверяем каждый час и импортим, если последнее успешное
 // чтение было давно (SUPPLIER_STALE_HOURS, дефолт 6). Раньше был '0 */6 * * *' —

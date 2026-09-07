@@ -108,6 +108,38 @@ export const ozon = {
     }
   },
 
+  // /v2/warehouse/list — склады продавца (нужен warehouse_id для обновления остатков).
+  // /v1/warehouse/list устарел (HTTP 400 "obsolete method cannot be used").
+  async getWarehouses() {
+    const data = await ozonFetch('POST', '/v2/warehouse/list', {});
+    return data?.warehouses ?? [];
+  },
+
+  // Берём единственный не-disabled склад — если их 0 или >1, дальше действовать
+  // молча нельзя (не ясно, куда писать остатки), поэтому кидаем понятную ошибку.
+  async getActiveWarehouseId() {
+    const list = await this.getWarehouses();
+    const active = list.filter(w => w.status !== 'disabled');
+    if (active.length === 0) throw new Error('Нет ни одного активного склада Ozon (все disabled)');
+    if (active.length > 1) {
+      const names = active.map(w => `${w.name}(${w.warehouse_id})`).join(', ');
+      throw new Error(`Найдено ${active.length} активных складов Ozon — не ясно, какой использовать: ${names}`);
+    }
+    return active[0].warehouse_id;
+  },
+
+  // /v2/products/stocks — обновление остатков, до 100 позиций за раз.
+  async updateStocks(items) {
+    if (items.length === 0) return [];
+    const payload = items.map(i => ({
+      offer_id: String(i.offer_id),
+      stock: Math.max(0, Math.round(i.stock)),
+      warehouse_id: i.warehouse_id,
+    }));
+    const data = await ozonFetch('POST', '/v2/products/stocks', { stocks: payload });
+    return data?.result ?? [];
+  },
+
   // /v1/product/import/prices — обновление цен, price передаётся строкой
   async updatePrices(prices) {
     const payload = prices.map(p => ({

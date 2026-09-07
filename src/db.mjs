@@ -658,6 +658,20 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS ozon_stock_updates (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    offer_id  TEXT NOT NULL,
+    old_stock INTEGER,
+    new_stock INTEGER NOT NULL,
+    status    TEXT NOT NULL,   -- 'sent' | 'failed'
+    error     TEXT,
+    sent_at   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ozon_stock_updates_offer ON ozon_stock_updates(offer_id);
+  CREATE INDEX IF NOT EXISTS idx_ozon_stock_updates_sent  ON ozon_stock_updates(sent_at DESC);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS ozon_auto_price_settings (
     price_group TEXT PRIMARY KEY,   -- 'raise' | 'lower'
     enabled     INTEGER DEFAULT 0,
