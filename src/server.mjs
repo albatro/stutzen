@@ -18,6 +18,7 @@ let salesImportInProgress = false;
 let pricesSendInProgress = false;
 let ozonSyncInProgress = false;
 let ozonSyncStartedAt = null;
+let ozonStockSendInProgress = false;
 const OZON_SYNC_STALE_MS = 20 * 60 * 1000; // если синк «завис» дольше этого — считаем блокировку мёртвой
 
 // Закрываем записи, оставшиеся в статусе 'running' из-за перезапуска контейнера.
@@ -1924,6 +1925,7 @@ app.get('/api/ozon/bulk-stocks/stats', (req, res) => {
         actual: groups.actual.length,
       },
       auto: getSetting('ozon_auto_stock_enabled') === '1',
+      sendInProgress: ozonStockSendInProgress,
       nextRunAt: nextCronAt(),
       lastRuns,
     });
@@ -1931,10 +1933,13 @@ app.get('/api/ozon/bulk-stocks/stats', (req, res) => {
 });
 
 app.post('/api/ozon/bulk-stocks/execute', async (req, res) => {
+  if (ozonStockSendInProgress) return res.status(409).json({ error: 'Отправка остатков уже идёт' });
+  ozonStockSendInProgress = true;
   try {
     const result = await sendOzonStocks();
     res.json({ ok: true, ...result });
   } catch (e) { res.status(500).json({ error: e.message }); }
+  finally { ozonStockSendInProgress = false; }
 });
 
 app.put('/api/ozon/bulk-stocks/auto', (req, res) => {
@@ -2048,7 +2053,11 @@ scheduleEveryMinutes(() => {
 // Ozon автоотправка остатков — каждые 15 минут
 scheduleEveryMinutes(() => {
   if (getSetting('ozon_auto_stock_enabled') !== '1') return;
-  sendOzonStocks().catch(e => console.error('[OZON auto stock]:', e.message));
+  if (ozonStockSendInProgress) return;
+  ozonStockSendInProgress = true;
+  sendOzonStocks()
+    .catch(e => console.error('[OZON auto stock]:', e.message))
+    .finally(() => { ozonStockSendInProgress = false; });
 }, 15, 'OZON auto stock');
 
 // Импорт фида поставщика: проверяем каждый час и импортим, если последнее успешное

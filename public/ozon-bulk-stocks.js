@@ -27,6 +27,10 @@ async function loadStats() {
   _autoEnabled = !!data.auto;
   $('auto-stock').checked = _autoEnabled;
 
+  const btn = $('send-stock');
+  if (data.sendInProgress) { btn.disabled = true; btn.textContent = 'Отправка идёт…'; }
+  else if (btn.textContent === 'Отправка идёт…') { btn.disabled = false; btn.textContent = 'Отправить сейчас'; }
+
   updateTimer();
   renderLog(data.lastRuns ?? []);
   loadErrors();
