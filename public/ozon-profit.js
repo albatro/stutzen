@@ -63,6 +63,8 @@ const table = new Tabulator('#table', {
       formatter: (cell) => fmtMoney(cell.getValue()) },
     { title: 'Закупочная, ₽', field: 'purchase_price', width: 120, hozAlign: 'right',
       formatter: (cell) => fmtMoney(cell.getValue()) },
+    { title: 'Партийность', field: 'step_quantity', width: 100, hozAlign: 'right',
+      formatter: (cell) => { const v = cell.getValue(); return v > 1 ? v : ''; } },
     { title: 'К перечислению FBS, ₽', field: 'fbs_net', width: 150, hozAlign: 'right', formatter: fmtColored },
     { title: 'Маржа FBS, ₽', field: 'margin_fbs', width: 120, hozAlign: 'right', formatter: fmtColored },
     { title: 'Маржа FBS, %', field: 'margin_pct_fbs', width: 110, hozAlign: 'right', formatter: fmtPctColored },
@@ -126,7 +128,8 @@ function buildProfitHtml(data, schema) {
   </div>`;
 
   if (purchase != null) {
-    html += tr('Закупочная цена', purchase, '−', 'цена поставщика');
+    const stepQty = data.step_quantity > 1 ? data.step_quantity : null;
+    html += tr('Закупочная цена', purchase, '−', stepQty ? `цена поставщика × партийность ${stepQty}` : 'цена поставщика');
     html += `<div class="tip-sep"></div>`;
     const marginClass = margin < 0 ? 'tip-neg' : 'tip-pos';
     html += `<div class="tip-row tip-total ${marginClass}">

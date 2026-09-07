@@ -1263,9 +1263,13 @@ app.get('/api/ozon/profit', (req, res) => { try {
   const limit  = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
 
+  // Один SKU на Ozon = одна партия из step_quantity штук у поставщика (как и в YM-фиде),
+  // поэтому себестоимость лота = purchase_price * step_quantity, а не цена за штуку.
+  const supPurchase = `sup.purchase_price * COALESCE(sup.step_quantity, 1)`;
+
   const sortMap = {
     product_id: 'p.product_id', offer_id: 'p.offer_id', name: 'p.name',
-    price: 'pr.price', purchase_price: 'sup.purchase_price',
+    price: 'pr.price', purchase_price: supPurchase,
     margin_fbs: 'margin_fbs', margin_pct_fbs: 'margin_pct_fbs',
     stock_total: 'COALESCE(s.stock_total,0)', updated_at: 'p.updated_at',
   };
@@ -1305,17 +1309,18 @@ app.get('/api/ozon/profit', (req, res) => { try {
       c.fbo_direct_flow_trans_max_amount, c.fbo_return_flow_amount,
       c.fbs_commission_percent, c.fbs_first_mile_max_amount, c.fbs_deliv_amount,
       c.fbs_direct_flow_trans_max_amount, c.fbs_return_flow_amount,
-      sup.purchase_price, sup.vendor, sup.available AS sup_available,
+      ${supPurchase} AS purchase_price, sup.vendor, sup.available AS sup_available,
+      COALESCE(sup.step_quantity, 1) AS step_quantity,
       CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL THEN ${fboNet} ELSE NULL END AS fbo_net,
       CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL THEN ${fbsNet} ELSE NULL END AS fbs_net,
       CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL AND sup.purchase_price IS NOT NULL THEN
-        ROUND(${fbsNet} - sup.purchase_price, 2) ELSE NULL END AS margin_fbs,
+        ROUND(${fbsNet} - ${supPurchase}, 2) ELSE NULL END AS margin_fbs,
       CASE WHEN pr.price IS NOT NULL AND c.fbs_commission_percent IS NOT NULL AND sup.purchase_price > 0 THEN
-        ROUND((${fbsNet} - sup.purchase_price) / sup.purchase_price * 100.0, 1) ELSE NULL END AS margin_pct_fbs,
+        ROUND((${fbsNet} - ${supPurchase}) / ${supPurchase} * 100.0, 1) ELSE NULL END AS margin_pct_fbs,
       CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL AND sup.purchase_price IS NOT NULL THEN
-        ROUND(${fboNet} - sup.purchase_price, 2) ELSE NULL END AS margin_fbo,
+        ROUND(${fboNet} - ${supPurchase}, 2) ELSE NULL END AS margin_fbo,
       CASE WHEN pr.price IS NOT NULL AND c.fbo_commission_percent IS NOT NULL AND sup.purchase_price > 0 THEN
-        ROUND((${fboNet} - sup.purchase_price) / sup.purchase_price * 100.0, 1) ELSE NULL END AS margin_pct_fbo,
+        ROUND((${fboNet} - ${supPurchase}) / ${supPurchase} * 100.0, 1) ELSE NULL END AS margin_pct_fbo,
       p.updated_at
     ${baseQuery}
     ORDER BY ${sortExpr} ${dir}
@@ -1568,7 +1573,8 @@ app.get('/api/ozon/price-proposals', (req, res) => { try {
       c.fbs_commission_percent, c.fbs_deliv_amount, c.fbs_first_mile_max_amount,
       c.fbs_direct_flow_trans_max_amount,
       c.fbo_commission_percent, c.fbo_deliv_amount, c.fbo_direct_flow_trans_max_amount,
-      sup.purchase_price, sup.vendor
+      sup.purchase_price * COALESCE(sup.step_quantity, 1) AS purchase_price, sup.vendor,
+      COALESCE(sup.step_quantity, 1) AS step_quantity
     FROM ozon_products p
     LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
     LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
@@ -1619,7 +1625,7 @@ app.get('/api/ozon/price-proposals', (req, res) => { try {
     result.push({
       product_id: r.product_id, offer_id: r.offer_id, name: r.name,
       category_name: r.category_name, image_url: r.image_url, vendor: r.vendor,
-      purchase_price: r.purchase_price, current_price: r.current_price,
+      purchase_price: r.purchase_price, step_quantity: r.step_quantity, current_price: r.current_price,
       margin_percent: margin_pct, acq_pct,
       fbs_commission_percent: r.fbs_commission_percent,
       fbo_commission_percent: r.fbo_commission_percent,
@@ -1703,7 +1709,7 @@ function computeOzonPriceGroups() {
       pr.price AS current_price,
       CASE WHEN pr.price > 0 AND pr.acquiring IS NOT NULL THEN ROUND(pr.acquiring*100.0/pr.price, 4) ELSE 1.0 END AS acq_pct,
       c.fbs_commission_percent, c.fbs_deliv_amount, c.fbs_first_mile_max_amount, c.fbs_direct_flow_trans_max_amount,
-      sup.purchase_price
+      sup.purchase_price * COALESCE(sup.step_quantity, 1) AS purchase_price
     FROM ozon_products p
     LEFT JOIN ozon_prices pr ON pr.product_id = p.product_id
     LEFT JOIN ozon_commissions c ON c.product_id = p.product_id
