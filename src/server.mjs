@@ -1431,12 +1431,20 @@ app.get('/api/ozon/debug', async (req, res) => {
       v1_supplier_warehouse: await ozonFetch('GET', '/v1/supplier/warehouse', undefined).catch(e => ({ error: e.message })),
     };
 
-    // 4c. FBS остатки через v3 stocks (альтернатива v4)
-    const fbsStocks = productIds.length
-      ? await ozonFetch('POST', '/v3/product/info/stocks', {
-          filter: { product_id: productIds, visibility: 'ALL' }, limit: 2, offset: 0,
-        }).catch(e => ({ error: e.message }))
-      : null;
+    // 4c. Ищем среди каталога товары с непустым stocks[] — раньше их не было
+    // (везде stocks: []), сейчас после первой отправки остатков в Ozon упало
+    // "Provided value cannot be bound to SQLite parameter 2" на шаге stocks —
+    // нужно увидеть реальную форму непустой записи.
+    let fbsStocks = null;
+    try {
+      const scan = await ozonFetch('POST', '/v4/product/info/stocks', {
+        filter: { visibility: 'ALL' }, limit: 200,
+      });
+      const withStock = (scan?.items ?? []).filter(i => (i.stocks ?? []).length > 0);
+      fbsStocks = { scanned: scan?.items?.length ?? 0, withStockCount: withStock.length, samples: withStock.slice(0, 5) };
+    } catch (e) {
+      fbsStocks = { error: e.message };
+    }
 
     // 5. Диагностика БД: количество строк и образец реальных колонок (не raw_json)
     const dbStats = {
