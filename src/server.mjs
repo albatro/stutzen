@@ -1654,6 +1654,13 @@ app.get('/api/ozon/price-proposals', (req, res) => { try {
 } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ---- Ozon отправка цен ----
+// Ozon возвращает errors как массив объектов {code, message}, а не строк —
+// join('; ') на них даёт "[object Object]" в логе вместо текста ошибки.
+function fmtOzonErrors(errors) {
+  if (!errors?.length) return null;
+  return errors.map(e => typeof e === 'string' ? e : (e.message ?? e.code ?? JSON.stringify(e))).join('; ');
+}
+
 app.post('/api/ozon/update-prices', async (req, res) => {
   const { items } = req.body ?? {};
   if (!Array.isArray(items) || items.length === 0)
@@ -1689,7 +1696,7 @@ app.post('/api/ozon/update-prices', async (req, res) => {
         currentPrices.get(r.offer_id) ?? null,
         item?.price ?? null,
         r.updated ? 'sent' : 'failed',
-        r.errors?.length ? r.errors.join('; ') : null,
+        fmtOzonErrors(r.errors),
         now,
       );
     }
@@ -1774,7 +1781,7 @@ async function sendOzonGroup(group) {
     for (const r of results) {
       const item = chunk.find(c => c.offer_id === r.offer_id);
       logStmt.run(r.offer_id, item?.current_price ?? null, item?.proposed_price ?? null,
-        r.updated ? 'sent' : 'failed', r.errors?.length ? r.errors.join('; ') : null, now);
+        r.updated ? 'sent' : 'failed', fmtOzonErrors(r.errors), now);
       if (r.updated) sent++; else errors++;
     }
   }
@@ -1829,7 +1836,7 @@ async function sendOzonStocks() {
     for (const r of results) {
       const item = chunk.find(c => c.offer_id === r.offer_id);
       logStmt.run(r.offer_id, item?.current_stock ?? null, item?.desired_stock ?? null,
-        r.updated ? 'sent' : 'failed', r.errors?.length ? r.errors.join('; ') : null, now);
+        r.updated ? 'sent' : 'failed', fmtOzonErrors(r.errors), now);
       if (r.updated) sent++; else errors++;
     }
   }
