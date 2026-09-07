@@ -1338,6 +1338,7 @@ app.get('/api/ozon/supplier-stock', (req, res) => { try {
   const search   = (req.query.search ?? '').toString().trim();
   const category = req.query.category ? Number(req.query.category) : null;
   const onlyMatched = req.query.matched === '1';
+  const availability = (req.query.availability ?? '').toString();
   const sort = (req.query.sort ?? 'product_id').toString();
   const dir  = req.query.dir === 'desc' ? 'DESC' : 'ASC';
   const limit  = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
@@ -1361,6 +1362,8 @@ app.get('/api/ozon/supplier-stock', (req, res) => { try {
   }
   if (category)    { where.push(`p.category_id = ?`);           params.push(category); }
   if (onlyMatched) { where.push(`sup.purchase_price IS NOT NULL`); }
+  if (availability === 'in')  where.push(`${supplierStockExpr} > 0`);
+  if (availability === 'out') where.push(`${supplierStockExpr} = 0`);
   const whereSql = `WHERE ${where.join(' AND ')}`;
 
   const baseQuery = `

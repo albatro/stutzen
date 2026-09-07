@@ -30,6 +30,8 @@ const table = new Tabulator('#table', {
     const cat = $('#category').value;
     if (cat) p.set('category', cat);
     if ($('#only-matched').checked) p.set('matched', '1');
+    const availability = $('#availability').value;
+    if (availability) p.set('availability', availability);
     return `${url}?${p}`;
   },
   ajaxResponse: (_url, _params, response) => ({
@@ -132,6 +134,7 @@ $('#refresh')?.addEventListener('click', () => table.replaceData());
 $('#search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') table.replaceData(); });
 $('#category')?.addEventListener('change', () => table.replaceData());
 $('#only-matched')?.addEventListener('change', () => table.replaceData());
+$('#availability')?.addEventListener('change', () => table.replaceData());
 
 // ---- Статистика ----
 async function loadStats() {
