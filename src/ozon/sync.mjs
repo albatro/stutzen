@@ -127,9 +127,13 @@ export async function runOzonSync() {
               cleared.add(item.product_id);
             }
             for (const st of item.stocks ?? []) {
+              // У FBS-записей нет одиночного warehouse_id — только warehouse_ids[]
+              // (часто пустой, т.к. Ozon не разбивает остаток по складам продавца).
+              // 0 — синтетический ID для "неизвестный/не разбит по складам".
+              const warehouseId = st.warehouse_id ?? st.warehouse_ids?.[0] ?? 0;
               insertOzonStock({
                 product_id: item.product_id,
-                warehouse_id: st.warehouse_id,
+                warehouse_id: warehouseId,
                 type: st.type ?? 'fbo',
                 present: st.present ?? 0,
                 reserved: st.reserved ?? 0,
