@@ -58,6 +58,7 @@ const table = new Tabulator('#table', {
         return `<span style="${cls}">${fmtPct(v)}</span>`;
       } },
     { title: 'Наличие, шт', field: 'count', width: 100, hozAlign: 'right' },
+    { title: 'Партийность', field: 'step_quantity', width: 100, hozAlign: 'right' },
     { title: 'Вес, кг', field: 'weight', width: 80, hozAlign: 'right' },
     { title: 'Страна', field: 'country', width: 110 },
     { title: 'В ЯМ?', field: 'in_ym', width: 80, hozAlign: 'center',
